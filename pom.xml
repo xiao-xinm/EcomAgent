@@ -1,0 +1,608 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.2</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.smartcs.agent</groupId>
+    <artifactId>smartcs-agent-server</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>SmartCS Agent Server</name>
+    <description>AI Agent 智能客服系统 - 微服务架构（Spring Cloud + Spring Cloud Alibaba + Nacos）</description>
+
+    <!-- ============================================================ -->
+    <!-- 多模块结构                                                     -->
+    <!-- ============================================================ -->
+    <modules>
+        <module>smartcs-gateway</module>
+        <module>smartcs-agent-core</module>
+        <module>smartcs-skill-engine</module>
+        <module>smartcs-workbench</module>
+        <module>smartcs-knowledge</module>
+        <module>smartcs-notification</module>
+        <module>smartcs-common</module>
+    </modules>
+
+    <!-- ============================================================ -->
+    <!-- 全局属性                                                       -->
+    <!-- ============================================================ -->
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- ==================== Spring 生态版本 ==================== -->
+        <spring-boot.version>3.3.2</spring-boot.version>
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
+        <spring-cloud-alibaba.version>2023.0.1.2</spring-cloud-alibaba.version>
+
+        <!-- ==================== 中间件 & 工具版本 ==================== -->
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
+        <milvus-sdk.version>2.4.4</milvus-sdk.version>
+        <knife4j.version>4.5.0</knife4j.version>
+        <jjwt.version>0.12.6</jjwt.version>
+        <hutool.version>5.8.27</hutool.version>
+        <mapstruct.version>1.6.0</mapstruct.version>
+        <caffeine.version>3.1.8</caffeine.version>
+        <json-path.version>2.9.0</json-path.version>
+        <spring-statemachine.version>4.0.0</spring-statemachine.version>
+        <protobuf-java.version>3.25.4</protobuf-java.version>
+        <grpc.version>1.65.1</grpc.version>
+        <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+        <spring-boot-admin.version>3.3.4</spring-boot-admin.version>
+    </properties>
+
+    <!-- ============================================================ -->
+    <!-- 依赖版本管理（BOM + 显式声明，不引入实际依赖）                    -->
+    <!-- ============================================================ -->
+    <dependencyManagement>
+        <dependencies>
+
+            <!-- ============================== -->
+            <!-- Spring Cloud BOM（Leyton）      -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Spring Cloud Alibaba BOM        -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- 项目内部模块                     -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-gateway</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-agent-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-skill-engine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-workbench</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-knowledge</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartcs.agent</groupId>
+                <artifactId>smartcs-notification</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Spring Boot Admin              -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>de.codecentric</groupId>
+                <artifactId>spring-boot-admin-starter-server</artifactId>
+                <version>${spring-boot-admin.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>de.codecentric</groupId>
+                <artifactId>spring-boot-admin-starter-client</artifactId>
+                <version>${spring-boot-admin.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- MyBatis-Plus                    -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- RocketMQ                        -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>org.apache.rocketmq</groupId>
+                <artifactId>rocketmq-spring-boot-starter</artifactId>
+                <version>${rocketmq-spring.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Milvus Java SDK                 -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>io.milvus</groupId>
+                <artifactId>milvus-sdk-java</artifactId>
+                <version>${milvus-sdk.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- JWT (JJWT)                      -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-api</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-impl</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.jsonwebtoken</groupId>
+                <artifactId>jjwt-jackson</artifactId>
+                <version>${jjwt.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Knife4j (Swagger 增强)          -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+                <version>${knife4j.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Hutool 工具集                    -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-all</artifactId>
+                <version>${hutool.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- MapStruct 对象映射               -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct-processor</artifactId>
+                <version>${mapstruct.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Caffeine 本地缓存               -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- JSONPath 表达式解析（技能参数映射）-->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>com.jayway.jsonpath</groupId>
+                <artifactId>json-path</artifactId>
+                <version>${json-path.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- Spring Statemachine（对话状态机） -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>org.springframework.statemachine</groupId>
+                <artifactId>spring-statemachine-core</artifactId>
+                <version>${spring-statemachine.version}</version>
+            </dependency>
+
+            <!-- ============================== -->
+            <!-- gRPC                            -->
+            <!-- ============================== -->
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-stub</artifactId>
+                <version>${grpc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-protobuf</artifactId>
+                <version>${grpc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.grpc</groupId>
+                <artifactId>grpc-netty-shaded</artifactId>
+                <version>${grpc.version}</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ============================================================ -->
+    <!-- 全局依赖（所有模块均引入）                                       -->
+    <!-- ============================================================ -->
+    <dependencies>
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 测试 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- ============================================================ -->
+    <!-- 构建配置                                                       -->
+    <!-- ============================================================ -->
+    <build>
+        <extensions>
+            <extension>
+                <groupId>kr.motd.maven</groupId>
+                <artifactId>os-maven-plugin</artifactId>
+                <version>${os-maven-plugin.version}</version>
+            </extension>
+        </extensions>
+
+        <pluginManagement>
+            <plugins>
+                <!-- Spring Boot Maven Plugin -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+
+                <!-- MyBatis-Plus 代码生成器插件 -->
+                <plugin>
+                    <groupId>com.baomidou</groupId>
+                    <artifactId>mybatis-plus-maven-plugin</artifactId>
+                    <version>${mybatis-plus.version}</version>
+                </plugin>
+
+                <!-- Protobuf 编译插件 -->
+                <plugin>
+                    <groupId>org.xolstice.maven.plugins</groupId>
+                    <artifactId>protobuf-maven-plugin</artifactId>
+                    <version>0.6.1</version>
+                    <configuration>
+                        <protocArtifact>com.google.protobuf:protoc:${protobuf-java.version}:exe:${os.detected.classifier}</protocArtifact>
+                        <pluginId>grpc-java</pluginId>
+                        <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>compile</goal>
+                                <goal>compile-custom</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Checkstyle 代码规范检查 -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>3.4.0</version>
+                    <configuration>
+                        <configLocation>google_checks.xml</configLocation>
+                        <consoleOutput>true</consoleOutput>
+                        <failOnViolation>true</failOnViolation>
+                        <skip>false</skip>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>validate</id>
+                            <phase>validate</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <!-- 编译插件 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                    <encoding>UTF-8</encoding>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>${mapstruct.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- ============================================================ -->
+    <!-- 各模块依赖声明（Profile 控制）                                   -->
+    <!-- ============================================================ -->
+    <profiles>
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <spring.profiles.active>dev</spring.profiles.active>
+            </properties>
+        </profile>
+        <profile>
+            <id>prod</id>
+            <properties>
+                <spring.profiles.active>prod</spring.profiles.active>
+            </properties>
+        </profile>
+    </profiles>
+
+    <!-- ============================================================ -->
+    <!-- 仓库配置                                                       -->
+    <!-- ============================================================ -->
+    <repositories>
+        <repository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+        <repository>
+            <id>aliyun</id>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <releases><enabled>true</enabled></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>central</id>
+            <url>https://repo.maven.apache.org/maven2</url>
+        </pluginRepository>
+        <pluginRepository>
+            <id>aliyun</id>
+            <url>https://maven.aliyun.com/repository/public</url>
+        </pluginRepository>
+    </pluginRepositories>
+
+    <!-- ============================================================ -->
+    <!-- 各子模块应引入的依赖说明（注释参考，不会引入实际依赖）              -->
+    <!-- ============================================================ -->
+
+    <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-gateway — Spring Cloud Gateway 网关                ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  ⚠️  基于 WebFlux，严禁引入 spring-boot-starter-web          ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  Spring Cloud 组件:                                         ║
+    ║    - spring-cloud-starter-gateway                           ║
+    ║    - spring-cloud-starter-alibaba-nacos-discovery           ║
+    ║    - spring-cloud-starter-alibaba-nacos-config              ║
+    ║    - spring-cloud-starter-loadbalancer                      ║
+    ║    - spring-cloud-starter-alibaba-sentinel                  ║
+    ║    - com.alibaba.csp:sentinel-spring-cloud-gateway-adapter  ║
+    ║  链路追踪:                                                   ║
+    ║    - io.micrometer:micrometer-tracing-bridge-brave          ║
+    ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
+    ║  业务依赖:                                                   ║
+    ║    - smartcs-common                                         ║
+    ║    - jjwt-api / jjwt-impl / jjwt-jackson (JWT鉴权)          ║
+    ║    - hutool-all                                             ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-agent-core — Agent核心逻辑（NLU/DM/风控路由）        ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  Spring Boot:                                               ║
+    ║    - spring-boot-starter-web                                ║
+    ║  Spring Cloud 组件:                                         ║
+    ║    - spring-cloud-starter-alibaba-nacos-discovery           ║
+    ║    - spring-cloud-starter-alibaba-nacos-config              ║
+    ║    - spring-cloud-starter-openfeign                         ║
+    ║    - spring-cloud-starter-loadbalancer                      ║
+    ║    - spring-cloud-starter-alibaba-sentinel                  ║
+    ║  链路追踪:                                                   ║
+    ║    - io.micrometer:micrometer-tracing-bridge-brave          ║
+    ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
+    ║  业务依赖:                                                   ║
+    ║    - smartcs-common                                         ║
+    ║    - spring-statemachine-core (对话状态机)                    ║
+    ║    - rocketmq-spring-boot-starter                           ║
+    ║    - mybatis-plus-spring-boot3-starter                      ║
+    ║    - caffeine                                               ║
+    ║    - hutool-all                                             ║
+    ║    - knife4j-openapi3-jakarta-spring-boot-starter           ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-skill-engine — 技能编排引擎                          ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  Spring Boot:                                               ║
+    ║    - spring-boot-starter-web                                ║
+    ║  Spring Cloud 组件:                                         ║
+    ║    - spring-cloud-starter-alibaba-nacos-discovery           ║
+    ║    - spring-cloud-starter-alibaba-nacos-config              ║
+    ║    - spring-cloud-starter-openfeign                         ║
+    ║    - spring-cloud-starter-loadbalancer                      ║
+    ║    - spring-cloud-starter-alibaba-sentinel                  ║
+    ║  链路追踪:                                                   ║
+    ║    - io.micrometer:micrometer-tracing-bridge-brave          ║
+    ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
+    ║  业务依赖:                                                   ║
+    ║    - smartcs-common                                         ║
+    ║    - json-path (技能参数映射)                                 ║
+    ║    - caffeine (技能缓存)                                     ║
+    ║    - rocketmq-spring-boot-starter                           ║
+    ║    - mybatis-plus-spring-boot3-starter                      ║
+    ║    - hutool-all                                             ║
+    ║    - knife4j-openapi3-jakarta-spring-boot-starter           ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-workbench — 坐席工作台后端                            ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  Spring Boot:                                               ║
+    ║    - spring-boot-starter-web                                ║
+    ║    - spring-boot-starter-websocket                          ║
+    ║  Spring Cloud 组件:                                         ║
+    ║    - spring-cloud-starter-alibaba-nacos-discovery           ║
+    ║    - spring-cloud-starter-alibaba-nacos-config              ║
+    ║    - spring-cloud-starter-openfeign                         ║
+    ║    - spring-cloud-starter-loadbalancer                      ║
+    ║    - spring-cloud-starter-alibaba-sentinel                  ║
+    ║  链路追踪:                                                   ║
+    ║    - io.micrometer:micrometer-tracing-bridge-brave          ║
+    ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
+    ║  业务依赖:                                                   ║
+    ║    - smartcs-common                                         ║
+    ║    - mybatis-plus-spring-boot3-starter                      ║
+    ║    - jjwt-api / jjwt-impl / jjwt-jackson                    ║
+    ║    - rocketmq-spring-boot-starter                           ║
+    ║    - hutool-all                                             ║
+    ║    - knife4j-openapi3-jakarta-spring-boot-starter           ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-knowledge — 知识库与RAG服务                          ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  Spring Boot:                                               ║
+    ║    - spring-boot-starter-web                                ║
+    ║  Spring Cloud 组件:                                         ║
+    ║    - spring-cloud-starter-alibaba-nacos-discovery           ║
+    ║    - spring-cloud-starter-alibaba-nacos-config              ║
+    ║    - spring-cloud-starter-openfeign                         ║
+    ║    - spring-cloud-starter-loadbalancer                      ║
+    ║    - spring-cloud-starter-alibaba-sentinel                  ║
+    ║  链路追踪:                                                   ║
+    ║    - io.micrometer:micrometer-tracing-bridge-brave          ║
+    ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
+    ║  业务依赖:                                                   ║
+    ║    - smartcs-common                                         ║
+    ║    - milvus-sdk-java (向量检索)                               ║
+    ║    - mybatis-plus-spring-boot3-starter                      ║
+    ║    - caffeine (嵌入缓存)                                     ║
+    ║    - hutool-all                                             ║
+    ║    - knife4j-openapi3-jakarta-spring-boot-starter           ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-notification — 通知服务（从原common中拆出）           ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  Spring Boot:                                               ║
+    ║    - spring-boot-starter-web                                ║
+    ║  Spring Cloud 组件:                                         ║
+    ║    - spring-cloud-starter-alibaba-nacos-discovery           ║
+    ║    - spring-cloud-starter-alibaba-nacos-config              ║
+    ║    - spring-cloud-starter-alibaba-sentinel                  ║
+    ║  链路追踪:                                                   ║
+    ║    - io.micrometer:micrometer-tracing-bridge-brave          ║
+    ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
+    ║  业务依赖:                                                   ║
+    ║    - smartcs-common                                         ║
+    ║    - rocketmq-spring-boot-starter (消费通知消息)              ║
+    ║    - mybatis-plus-spring-boot3-starter                      ║
+    ║    - hutool-all                                             ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  smartcs-common — 公共模块（工具类、公共实体、统一异常等）      ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  ⚠️  公共模块不启动独立服务，作为 JAR 被其他模块依赖            ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  通用依赖:                                                   ║
+    ║    - hutool-all                                             ║
+    ║    - jjwt-api (仅API，不含实现)                               ║
+    ║    - mapstruct                                              ║
+    ║    - caffeine                                               ║
+    ║    - spring-boot-starter-validation                         ║
+    ║    - spring-boot-admin-starter-client (可选，服务监控上报)     ║
+    ║    - io.micrometer:micrometer-observation (观测基础)          ║
+    ║  注意:                                                       ║
+    ║    - 不引入 spring-boot-starter-web（避免与 Gateway 冲突）     ║
+    ║    - 不引入 Nacos/Sentinel 等（由使用方按需引入）              ║
+    ╚══════════════════════════════════════════════════════════════╝
+    -->
+
+</project>
