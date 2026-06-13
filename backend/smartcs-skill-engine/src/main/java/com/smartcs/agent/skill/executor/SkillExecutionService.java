@@ -12,6 +12,7 @@ import com.smartcs.agent.skill.definition.SkillDtos.SkillExecuteResult;
 import com.smartcs.agent.skill.definition.SkillDtos.SkillSlotView;
 import com.smartcs.agent.skill.definition.SkillDtos.SkillStepResult;
 import com.smartcs.agent.skill.definition.SkillDtos.SkillStepView;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -294,18 +295,14 @@ public class SkillExecutionService {
             String status) {
         // 当前阶段只返回 mock 业务结果；真实电商 API 接入后，这里会替换为声明式步骤执行结果。
         Map<String, Object> response = new LinkedHashMap<>();
+        if ("order.query".equals(skill.intent())) {
+            return buildOrderQueryResponse(skill, request, status);
+        }
+
         response.put("mock", true);
         response.put("skillId", skill.skillId());
         response.put("intent", skill.intent());
         response.put("status", status);
-
-        if ("order.query".equals(skill.intent())) {
-            response.put("orderId", textFrom(request.parameters(), "order_id", "orderId", "latest"));
-            response.put("orderStatus", "SHIPPED");
-            response.put("logisticsStatus", "IN_TRANSIT");
-            response.put("summary", "已为你查到最近订单，当前订单已发货，物流运输中。");
-            return response;
-        }
 
         if ("order.modify_address".equals(skill.intent())) {
             response.put("orderId", textFrom(request.parameters(), "order_id", "orderId", "mock-order"));
@@ -316,6 +313,162 @@ public class SkillExecutionService {
 
         response.put("reviewRequired", "REVIEW_REQUIRED".equals(status));
         response.put("summary", "该技能已进入人工审核或人工兜底流程。");
+        return response;
+    }
+
+    private Map<String, Object> buildOrderQueryResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        if (!"SUCCEEDED".equals(status)) {
+            return mockOrderQueryResponse(skill, request, status);
+        }
+
+        try {
+            Map<String, Object> response = baseSkillResponse(skill, status);
+            response.put("mock", false);
+            response.put("source", "ecom_order");
+
+            OrderSnapshot order = findOrderForQuery(request);
+            response.put("found", order != null);
+            if (order == null) {
+                response.put("summary", "暂未查询到你的订单，请补充订单号或联系人工客服。");
+                return response;
+            }
+
+            List<Map<String, Object>> items = listOrderItems(order.orderId()).stream()
+                    .map(this::itemResponse)
+                    .toList();
+            response.put("orderId", order.orderId());
+            response.put("orderNo", order.orderNo());
+            response.put("orderStatus", order.orderStatus());
+            response.put("payStatus", order.payStatus());
+            response.put("logisticsStatus", order.logisticsStatus());
+            response.put("totalAmount", order.totalAmount());
+            response.put("paidAmount", order.paidAmount());
+            response.put("currency", order.currency());
+            response.put("canModifyAddress", order.canModifyAddress());
+            response.put("items", items);
+            response.put("summary", orderQuerySummary(order, items));
+            return response;
+        } catch (DataAccessException exception) {
+            LOGGER.warn(
+                    "查询电商订单失败，回退到mock响应 traceId={} sessionId={} userId={}",
+                    request.traceId(),
+                    request.sessionId(),
+                    request.userId(),
+                    exception);
+            Map<String, Object> response = mockOrderQueryResponse(skill, request, status);
+            response.put("fallbackReason", "ORDER_DOMAIN_QUERY_FAILED");
+            return response;
+        }
+    }
+
+    private OrderSnapshot findOrderForQuery(SkillExecuteRequest request) {
+        String userId = request.userId();
+        if (!hasText(userId)) {
+            return null;
+        }
+
+        String orderId = firstText(request.parameters(), "order_id", "orderId");
+        String orderNo = firstText(request.parameters(), "order_no", "orderNo");
+        StringBuilder sql = new StringBuilder(
+                """
+                SELECT order_id, order_no, user_id, order_status, pay_status, logistics_status,
+                       total_amount, paid_amount, currency, can_modify_address, created_at
+                FROM ecom_order
+                WHERE user_id = ?
+                """);
+        List<Object> params = new ArrayList<>();
+        params.add(userId);
+        if (hasText(orderId)) {
+            sql.append(" AND order_id = ?");
+            params.add(orderId);
+        }
+        if (hasText(orderNo)) {
+            sql.append(" AND order_no = ?");
+            params.add(orderNo);
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT 1");
+
+        return jdbcTemplate.query(sql.toString(), (rs, rowNum) -> mapOrderSnapshot(rs), params.toArray()).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private List<OrderItemSnapshot> listOrderItems(String orderId) {
+        return jdbcTemplate.query(
+                """
+                SELECT item_id, sku_id, sku_name, quantity, unit_price, total_amount, after_sale_status
+                FROM ecom_order_item
+                WHERE order_id = ?
+                ORDER BY item_id
+                """,
+                (rs, rowNum) -> new OrderItemSnapshot(
+                        rs.getString("item_id"),
+                        rs.getString("sku_id"),
+                        rs.getString("sku_name"),
+                        rs.getInt("quantity"),
+                        rs.getBigDecimal("unit_price"),
+                        rs.getBigDecimal("total_amount"),
+                        rs.getString("after_sale_status")),
+                orderId);
+    }
+
+    private OrderSnapshot mapOrderSnapshot(ResultSet rs) throws SQLException {
+        return new OrderSnapshot(
+                rs.getString("order_id"),
+                rs.getString("order_no"),
+                rs.getString("user_id"),
+                rs.getString("order_status"),
+                rs.getString("pay_status"),
+                rs.getString("logistics_status"),
+                rs.getBigDecimal("total_amount"),
+                rs.getBigDecimal("paid_amount"),
+                rs.getString("currency"),
+                rs.getBoolean("can_modify_address"),
+                toInstant(rs.getTimestamp("created_at")));
+    }
+
+    private Map<String, Object> itemResponse(OrderItemSnapshot item) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("itemId", item.itemId());
+        response.put("skuId", item.skuId());
+        response.put("skuName", item.skuName());
+        response.put("quantity", item.quantity());
+        response.put("unitPrice", item.unitPrice());
+        response.put("totalAmount", item.totalAmount());
+        response.put("afterSaleStatus", item.afterSaleStatus());
+        return response;
+    }
+
+    private String orderQuerySummary(OrderSnapshot order, List<Map<String, Object>> items) {
+        String itemName = items.isEmpty() ? "商品" : String.valueOf(items.get(0).get("skuName"));
+        return "已查询到订单 " + order.orderNo()
+                + "，商品：" + itemName
+                + "，订单状态：" + order.orderStatus()
+                + "，物流状态：" + order.logisticsStatus()
+                + "。";
+    }
+
+    private Map<String, Object> mockOrderQueryResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        Map<String, Object> response = baseSkillResponse(skill, status);
+        response.put("mock", true);
+        response.put("orderId", textFrom(request.parameters(), "order_id", "orderId", "latest"));
+        response.put("orderStatus", "SHIPPED");
+        response.put("logisticsStatus", "IN_TRANSIT");
+        response.put("summary", "已为你查到最近订单，当前订单已发货，物流运输中。");
+        return response;
+    }
+
+    private Map<String, Object> baseSkillResponse(SkillDefinitionView skill, String status) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("skillId", skill.skillId());
+        response.put("intent", skill.intent());
+        response.put("status", status);
         return response;
     }
 
@@ -443,6 +596,19 @@ public class SkillExecutionService {
         return value == null || value.toString().isBlank() ? fallback : value.toString();
     }
 
+    private String firstText(Map<String, Object> values, String... keys) {
+        if (values == null) {
+            return "";
+        }
+        for (String key : keys) {
+            Object value = values.get(key);
+            if (value != null && !value.toString().isBlank()) {
+                return value.toString();
+            }
+        }
+        return "";
+    }
+
     private String textOr(String value, String fallback) {
         return hasText(value) ? value : fallback;
     }
@@ -458,4 +624,26 @@ public class SkillExecutionService {
     private Timestamp timestamp(Instant instant) {
         return instant == null ? null : Timestamp.from(instant);
     }
+
+    private record OrderSnapshot(
+            String orderId,
+            String orderNo,
+            String userId,
+            String orderStatus,
+            String payStatus,
+            String logisticsStatus,
+            BigDecimal totalAmount,
+            BigDecimal paidAmount,
+            String currency,
+            boolean canModifyAddress,
+            Instant createdAt) {}
+
+    private record OrderItemSnapshot(
+            String itemId,
+            String skuId,
+            String skuName,
+            int quantity,
+            BigDecimal unitPrice,
+            BigDecimal totalAmount,
+            String afterSaleStatus) {}
 }
