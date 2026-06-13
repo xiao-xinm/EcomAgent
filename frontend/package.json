@@ -1,0 +1,20 @@
+{
+  "name": "@smartcs/frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SmartCS Agent frontend workspace",
+  "workspaces": [
+    "client-h5",
+    "app-h5",
+    "workstation"
+  ],
+  "scripts": {
+    "dev:client-h5": "npm --workspace @smartcs/client-h5 run dev",
+    "dev:app-h5": "npm --workspace @smartcs/app-h5 run dev",
+    "dev:workstation": "npm --workspace @smartcs/workstation run dev",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}

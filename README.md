@@ -42,17 +42,11 @@
 
 ## 当前工程落地说明
 
-当前仓库已按根 `pom.xml` 的 Maven 多模块声明落地工程骨架，实际 Java 模块以 `smartcs-*` 命名为准：
+当前仓库已调整为前后端分离结构：
 
-| 概念层 | 实际模块 |
-|------|----------|
-| 接入网关 / 会话管理 | `smartcs-gateway` |
-| Agent 核心编排 | `smartcs-agent-core` |
-| 技能编排引擎 | `smartcs-skill-engine` |
-| 坐席工作台后端 | `smartcs-workbench` |
-| 知识库 / RAG | `smartcs-knowledge` |
-| 通知服务 | `smartcs-notification` |
-| 公共契约与工具 | `smartcs-common` |
+- `backend/`：Java / Spring Boot 后端聚合工程，包含网关、Agent Core、技能引擎、坐席后端、知识库、通知和公共模块。
+- `frontend/`：前端工程集合，包含用户端 H5、APP 内嵌 H5 和坐席工作台。
+- `docs/`、`requirements/`、`infra/`、`scripts/`：作为项目级文档、需求、基础设施和脚本入口。
 
 本阶段只搭建框架、目录、依赖和文档契约，不包含订单、退款、换货、修改地址等业务实现代码。
 
@@ -64,7 +58,7 @@
 |------|----------|
 | **前端（用户端）** | React / Vue 3 + TypeScript、WebSocket (SockJS)、TailwindCSS |
 | **前端（坐席工作台）** | React 18 + Ant Design Pro、WebSocket 实时推送 |
-| **Agent 核心** | Python 3.11+、FastAPI、LangChain / 自研 Agent 框架 |
+| **Agent 核心** | Java 17 / Spring Boot 3、Spring Statemachine、LLM 适配器 / 自研 Agent 框架 |
 | **NLU / LLM** | Qwen-Max（主） / GPT-4o（备）、text2vec-large-chinese（Embedding） |
 | **后端服务** | Java 17 / Spring Boot 3、MyBatis-Plus、Spring Security + JWT |
 | **消息中间件** | RocketMQ 5.x |
@@ -87,34 +81,20 @@ smartcs-agent/
 │   └── ...
 ├── requirements/                  # 需求文档
 │   └── AI客服Agent需求文档.md
-├── gateway/                       # 接入网关服务 (Java/Spring Boot)
-│   ├── src/main/java/com/smartcs/gateway/
-│   │   ├── controller/            # REST & WebSocket 入口
-│   │   ├── filter/                # 限流、鉴权过滤器
-│   │   ├── protocol/              # 统一消息格式定义
-│   │   └── session/               # 会话管理
-│   └── src/main/resources/
-├── agent-core/                    # Agent 核心引擎 (Python/FastAPI)
-│   ├── nlu/                       # 意图识别 & 实体抽取
-│   ├── dm/                        # 对话管理器 & 状态机
-│   ├── skill/                     # 技能编排引擎
-│   ├── risk/                      # 风控路由 & 规则引擎
-│   ├── rag/                       # RAG 检索增强
-│   └── prompt/                    # Prompt 模板管理
-├── backend/                       # 后端支撑服务 (Java/Spring Boot)
-│   ├── business-api/              # 电商业务 API 适配层
-│   ├── ticket/                    # 工单 & 审批服务
-│   ├── notification/              # 通知服务
-│   └── knowledge/                 # 知识库管理服务
-├── workstation/                   # 坐席工作台前端 (React)
-│   ├── src/
-│   │   ├── pages/                 # 工单列表、审批、对话接管
-│   │   ├── components/            # 上下文透传、推荐话术组件
-│   │   └── websocket/             # WS 实时推送
-│   └── ...
-├── client-sdk/                    # 用户端 SDK / 嵌入组件
-│   ├── h5/                        # H5 网页端聊天组件
-│   └── app-h5/                    # APP 内嵌 H5 聊天组件
+├── backend/                       # 后端聚合工程 (Java/Spring Boot)
+│   ├── pom.xml                    # Maven 聚合入口
+│   ├── smartcs-gateway/           # 接入网关 / 会话管理
+│   ├── smartcs-agent-core/        # Agent 核心编排
+│   ├── smartcs-skill-engine/      # 技能注册与声明式编排
+│   ├── smartcs-workbench/         # 坐席工作台后端 / 人工审核
+│   ├── smartcs-knowledge/         # 知识库 / RAG
+│   ├── smartcs-notification/      # 通知服务
+│   └── smartcs-common/            # 公共契约与工具
+├── frontend/                      # 前端工程集合
+│   ├── client-h5/                 # 用户端 H5 聊天组件 (Vue 3)
+│   ├── app-h5/                    # APP 内嵌 H5 聊天组件
+│   ├── workstation/               # 坐席工作台前端
+│   └── package.json               # 前端 workspace 入口
 ├── infra/                         # 基础设施配置
 │   ├── docker/                    # Dockerfile
 │   ├── k8s/                       # Kubernetes manifests / Helm charts
@@ -138,7 +118,6 @@ smartcs-agent/
 ### 前置条件
 
 - JDK 17+
-- Python 3.11+
 - Node.js 18+
 - Docker & Docker Compose
 - MySQL 8.x / Redis 7.x / RocketMQ 5.x（本地开发可用 Docker Compose 起全套）
@@ -165,48 +144,42 @@ mysql -u root -p < 01-schema.sql      # 建库建表
 mysql -u root -p < 02-seed-data.sql   # 初始化技能注册表等
 ```
 
-### 4. 启动 Agent 核心服务
-
-```bash
-cd agent-core
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env               # 编辑 .env 填入 LLM API Key 等配置
-uvicorn app.main:app --reload --port 8001
-```
-
-### 5. 启动后端支撑服务
+### 4. 构建后端骨架
 
 ```bash
 cd backend
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+mvn clean install
 ```
 
-### 6. 启动接入网关
+### 5. 启动后端服务
 
 ```bash
-cd gateway
-./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+cd backend
+mvn -pl smartcs-gateway spring-boot:run -Dspring-boot.run.profiles=dev
+mvn -pl smartcs-agent-core spring-boot:run -Dspring-boot.run.profiles=dev
+mvn -pl smartcs-workbench spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-### 7. 启动坐席工作台
+### 6. 安装前端依赖
 
 ```bash
-cd workstation
+cd frontend
 npm install
-cp .env.example .env
-npm run dev
 ```
 
-### 8. 启动用户端 H5
+### 7. 启动用户端 H5
 
 ```bash
-cd client-sdk/h5
-npm install
-npm run dev
+npm run dev:client-h5
 ```
 
-访问 `http://localhost:3000` 打开客服对话界面，`http://localhost:3001` 打开坐席工作台。
+### 8. 启动坐席工作台前端骨架
+
+```bash
+npm run dev:workstation
+```
+
+页面实现后，默认规划为 `http://localhost:3000` 打开客服对话界面，`http://localhost:3001` 打开坐席工作台。
 
 ---
 
@@ -228,7 +201,7 @@ npm run dev
 <type>(<scope>): <subject>
 
 type: feat | fix | docs | style | refactor | perf | test | chore | ci
-scope: gateway | agent-core | backend | workstation | client-sdk | infra
+scope: gateway | agent-core | backend | frontend | workstation | infra
 ```
 
 示例：

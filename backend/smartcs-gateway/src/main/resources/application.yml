@@ -1,0 +1,24 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: smartcs-gateway
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+      discovery:
+        enabled: false
+    sentinel:
+      enabled: false
+
+smartcs:
+  agent-core:
+    base-url: ${SMARTCS_AGENT_CORE_BASE_URL:http://localhost:8081}
+  cors:
+    allowed-origins: ${SMARTCS_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001}

@@ -1,0 +1,369 @@
+-- SmartCS Agent minimal skill registry seed data
+-- This script is idempotent and can be safely re-run.
+
+USE `smartcs_agent`;
+
+-- ============================================================
+-- Skill registry
+-- ============================================================
+INSERT INTO `skill_registry` (
+    `skill_id`,
+    `skill_name`,
+    `intent`,
+    `base_risk_level`,
+    `execution_type`,
+    `enabled`,
+    `status`,
+    `description`,
+    `pre_conditions`,
+    `retry_policy`,
+    `timeout_ms`,
+    `owner`,
+    `version`
+) VALUES
+(
+    'order_query',
+    '订单查询',
+    'order.query',
+    'L0',
+    'SYNC',
+    1,
+    'ACTIVE',
+    '查询订单状态、物流状态和基础订单信息。',
+    JSON_OBJECT('requires_authenticated_user', true),
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 500),
+    10000,
+    'smartcs',
+    '1.0.0'
+),
+(
+    'order_modify_address',
+    '修改收货地址',
+    'order.modify_address',
+    'L1',
+    'SYNC',
+    1,
+    'ACTIVE',
+    '在订单状态允许时修改收货地址；实际执行前仍由风控根据订单状态动态升级。',
+    JSON_OBJECT('requires_authenticated_user', true, 'deny_if_signed', true),
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 1000),
+    30000,
+    'smartcs',
+    '1.0.0'
+),
+(
+    'refund_apply_review',
+    '退款申请人工审核',
+    'refund.apply',
+    'L3',
+    'REVIEW_ONLY',
+    1,
+    'ACTIVE',
+    '收集退款申请信息并创建人工审核工单，Agent 不直接退款。',
+    JSON_OBJECT('requires_authenticated_user', true, 'review_required', true),
+    JSON_OBJECT('max_retries', 0, 'backoff_ms', 0),
+    30000,
+    'smartcs',
+    '1.0.0'
+),
+(
+    'exchange_apply_review',
+    '换货申请人工审核',
+    'exchange.apply',
+    'L3',
+    'REVIEW_ONLY',
+    1,
+    'ACTIVE',
+    '收集换货申请信息并创建人工审核工单，Agent 不直接换货。',
+    JSON_OBJECT('requires_authenticated_user', true, 'review_required', true),
+    JSON_OBJECT('max_retries', 0, 'backoff_ms', 0),
+    30000,
+    'smartcs',
+    '1.0.0'
+)
+ON DUPLICATE KEY UPDATE
+    `skill_name` = VALUES(`skill_name`),
+    `base_risk_level` = VALUES(`base_risk_level`),
+    `execution_type` = VALUES(`execution_type`),
+    `enabled` = VALUES(`enabled`),
+    `status` = VALUES(`status`),
+    `description` = VALUES(`description`),
+    `pre_conditions` = VALUES(`pre_conditions`),
+    `retry_policy` = VALUES(`retry_policy`),
+    `timeout_ms` = VALUES(`timeout_ms`),
+    `owner` = VALUES(`owner`),
+    `updated_at` = CURRENT_TIMESTAMP(3);
+
+-- ============================================================
+-- Skill slots
+-- ============================================================
+INSERT INTO `skill_slot` (
+    `skill_id`,
+    `slot_name`,
+    `slot_type`,
+    `required`,
+    `source_priority`,
+    `enum_values`,
+    `validation_rule`,
+    `clarification_template`,
+    `default_value`,
+    `display_order`
+) VALUES
+(
+    'order_query',
+    'order_id',
+    'ORDER_ID',
+    0,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[A-Za-z0-9_-]{6,64}$',
+    '请提供订单号，或者我可以尝试查询你的最近订单。',
+    NULL,
+    10
+),
+(
+    'order_modify_address',
+    'order_id',
+    'ORDER_ID',
+    1,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[A-Za-z0-9_-]{6,64}$',
+    '请提供需要修改地址的订单号。',
+    NULL,
+    10
+),
+(
+    'order_modify_address',
+    'address_detail',
+    'ADDRESS',
+    1,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    NULL,
+    '请提供新的完整收货地址。',
+    NULL,
+    20
+),
+(
+    'order_modify_address',
+    'phone_number',
+    'PHONE',
+    1,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^1[3-9][0-9]{9}$',
+    '请提供收货手机号。',
+    NULL,
+    30
+),
+(
+    'order_modify_address',
+    'consignee_name',
+    'STRING',
+    0,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT', 'DEFAULT'),
+    NULL,
+    NULL,
+    '请提供收货人姓名。',
+    NULL,
+    40
+),
+(
+    'refund_apply_review',
+    'order_id',
+    'ORDER_ID',
+    1,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[A-Za-z0-9_-]{6,64}$',
+    '请提供需要申请退款的订单号。',
+    NULL,
+    10
+),
+(
+    'refund_apply_review',
+    'refund_reason',
+    'ENUM',
+    1,
+    JSON_ARRAY('EXTRACTED'),
+    JSON_ARRAY('不想要了', '拍错了', '商品问题', '未收到货', '其他'),
+    NULL,
+    '请选择或说明退款原因。',
+    NULL,
+    20
+),
+(
+    'refund_apply_review',
+    'refund_amount',
+    'AMOUNT',
+    0,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[0-9]+(\\.[0-9]{1,2})?$',
+    '如需部分退款，请说明退款金额。',
+    NULL,
+    30
+),
+(
+    'refund_apply_review',
+    'description',
+    'STRING',
+    0,
+    JSON_ARRAY('EXTRACTED'),
+    NULL,
+    NULL,
+    '请补充退款说明。',
+    NULL,
+    40
+),
+(
+    'exchange_apply_review',
+    'order_id',
+    'ORDER_ID',
+    1,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[A-Za-z0-9_-]{6,64}$',
+    '请提供需要申请换货的订单号。',
+    NULL,
+    10
+),
+(
+    'exchange_apply_review',
+    'exchange_reason',
+    'ENUM',
+    1,
+    JSON_ARRAY('EXTRACTED'),
+    JSON_ARRAY('尺码不合适', '颜色不喜欢', '商品破损', '商品错发', '其他'),
+    NULL,
+    '请选择或说明换货原因。',
+    NULL,
+    20
+),
+(
+    'exchange_apply_review',
+    'product_sku',
+    'STRING',
+    0,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    NULL,
+    '如果订单中有多个商品，请说明需要换货的商品。',
+    NULL,
+    30
+),
+(
+    'exchange_apply_review',
+    'description',
+    'STRING',
+    0,
+    JSON_ARRAY('EXTRACTED'),
+    NULL,
+    NULL,
+    '请补充换货说明。',
+    NULL,
+    40
+)
+ON DUPLICATE KEY UPDATE
+    `slot_type` = VALUES(`slot_type`),
+    `required` = VALUES(`required`),
+    `source_priority` = VALUES(`source_priority`),
+    `enum_values` = VALUES(`enum_values`),
+    `validation_rule` = VALUES(`validation_rule`),
+    `clarification_template` = VALUES(`clarification_template`),
+    `default_value` = VALUES(`default_value`),
+    `display_order` = VALUES(`display_order`),
+    `updated_at` = CURRENT_TIMESTAMP(3);
+
+-- ============================================================
+-- Skill API orchestration steps
+-- REVIEW_ONLY skills intentionally have no business execution steps.
+-- ============================================================
+INSERT INTO `skill_api_step` (
+    `skill_id`,
+    `step_no`,
+    `step_name`,
+    `api_name`,
+    `http_method`,
+    `endpoint`,
+    `params_mapping`,
+    `headers_mapping`,
+    `body_template`,
+    `result_mapping`,
+    `required`,
+    `rollback_endpoint`,
+    `rollback_mapping`,
+    `timeout_ms`,
+    `retry_policy`
+) VALUES
+(
+    'order_query',
+    1,
+    '查询订单',
+    'business.order.query',
+    'GET',
+    '/business-api/orders/query',
+    JSON_OBJECT('orderId', 'slots.order_id', 'userId', 'session.user_id'),
+    NULL,
+    NULL,
+    JSON_OBJECT('orderStatus', '$.status', 'logisticsStatus', '$.logistics.status', 'summary', '$.summary'),
+    1,
+    NULL,
+    NULL,
+    5000,
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 300)
+),
+(
+    'order_modify_address',
+    1,
+    '查询订单状态',
+    'business.order.status',
+    'GET',
+    '/business-api/orders/status',
+    JSON_OBJECT('orderId', 'slots.order_id', 'userId', 'session.user_id'),
+    NULL,
+    NULL,
+    JSON_OBJECT('orderStatus', '$.status', 'canModifyAddress', '$.canModifyAddress'),
+    1,
+    NULL,
+    NULL,
+    5000,
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 300)
+),
+(
+    'order_modify_address',
+    2,
+    '修改收货地址',
+    'business.order.modify_address',
+    'PATCH',
+    '/business-api/orders/address',
+    JSON_OBJECT('orderId', 'slots.order_id', 'userId', 'session.user_id'),
+    NULL,
+    JSON_OBJECT(
+        'address', 'slots.address_detail',
+        'phone', 'slots.phone_number',
+        'consigneeName', 'slots.consignee_name'
+    ),
+    JSON_OBJECT('modifyRequestId', '$.modifyRequestId', 'status', '$.status'),
+    1,
+    '/business-api/orders/address/rollback',
+    JSON_OBJECT('modifyRequestId', '$.step2.response.modifyRequestId'),
+    10000,
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 1000)
+)
+ON DUPLICATE KEY UPDATE
+    `step_name` = VALUES(`step_name`),
+    `api_name` = VALUES(`api_name`),
+    `http_method` = VALUES(`http_method`),
+    `endpoint` = VALUES(`endpoint`),
+    `params_mapping` = VALUES(`params_mapping`),
+    `headers_mapping` = VALUES(`headers_mapping`),
+    `body_template` = VALUES(`body_template`),
+    `result_mapping` = VALUES(`result_mapping`),
+    `required` = VALUES(`required`),
+    `rollback_endpoint` = VALUES(`rollback_endpoint`),
+    `rollback_mapping` = VALUES(`rollback_mapping`),
+    `timeout_ms` = VALUES(`timeout_ms`),
+    `retry_policy` = VALUES(`retry_policy`),
+    `updated_at` = CURRENT_TIMESTAMP(3);

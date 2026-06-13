@@ -1,0 +1,246 @@
+package com.smartcs.agent.gateway.controller;
+
+import com.smartcs.agent.common.domain.AgentReply;
+import com.smartcs.agent.common.domain.ChatActionRequest;
+import com.smartcs.agent.common.domain.ChatMessageView;
+import com.smartcs.agent.common.domain.ChatRequest;
+import com.smartcs.agent.common.domain.ChatSessionView;
+import com.smartcs.agent.common.dto.ApiResponse;
+import com.smartcs.agent.common.enums.ErrorCode;
+import com.smartcs.agent.common.util.TraceIds;
+import jakarta.validation.Valid;
+import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+/**
+ * 聊天接入入口：负责补齐 trace/session/channel 后转发给 Agent Core。
+ */
+@RestController
+public class ChatController {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ChatController.class);
+    private static final ParameterizedTypeReference<ApiResponse<AgentReply>> AGENT_REPLY_TYPE =
+            new ParameterizedTypeReference<>() {
+            };
+    private static final ParameterizedTypeReference<ApiResponse<ChatSessionView>> CHAT_SESSION_TYPE =
+            new ParameterizedTypeReference<>() {
+            };
+    private static final ParameterizedTypeReference<ApiResponse<java.util.List<ChatMessageView>>> CHAT_MESSAGES_TYPE =
+            new ParameterizedTypeReference<>() {
+            };
+    private static final String APPLICATION_JSON_UTF8 = "application/json;charset=UTF-8";
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
+
+    private final WebClient agentCoreClient;
+
+    public ChatController(
+            WebClient.Builder webClientBuilder,
+            @Value("${smartcs.agent-core.base-url:http://localhost:8081}") String agentCoreBaseUrl) {
+        this.agentCoreClient = webClientBuilder.baseUrl(agentCoreBaseUrl).build();
+    }
+
+    @PostMapping(
+            value = "/api/chat/messages",
+            consumes = APPLICATION_JSON_UTF8,
+            produces = APPLICATION_JSON_UTF8)
+    public Mono<ApiResponse<AgentReply>> sendMessage(@Valid @RequestBody ChatRequest request) {
+        ChatRequest normalized = normalize(request);
+        LOGGER.info(
+                "Gateway收到聊天请求 traceId={} sessionId={} userId={} channel={} contentLength={}",
+                normalized.traceId(),
+                normalized.sessionId(),
+                normalized.userId(),
+                normalized.channel(),
+                contentLength(normalized.content()));
+        return agentCoreClient.post()
+                .uri("/api/agent/chat")
+                .header(REQUEST_ID_HEADER, normalized.traceId())
+                .contentType(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .bodyValue(normalized)
+                .retrieve()
+                .bodyToMono(AGENT_REPLY_TYPE)
+                .doOnNext(response -> logAgentCoreResponse(normalized, response))
+                .onErrorResume(error -> {
+                    LOGGER.warn(
+                            "Gateway转发Agent Core失败 traceId={} sessionId={} userId={}",
+                            normalized.traceId(),
+                            normalized.sessionId(),
+                            normalized.userId(),
+                            error);
+                    return Mono.just(ApiResponse.failure(ErrorCode.INTERNAL_ERROR, normalized.traceId()));
+                });
+    }
+
+    @PostMapping(
+            value = "/api/chat/actions",
+            consumes = APPLICATION_JSON_UTF8,
+            produces = APPLICATION_JSON_UTF8)
+    public Mono<ApiResponse<AgentReply>> handleAction(@Valid @RequestBody ChatActionRequest request) {
+        ChatActionRequest normalized = normalizeAction(request);
+        LOGGER.info(
+                "Gateway收到聊天动作 traceId={} sessionId={} userId={} channel={} actionType={} actionId={}",
+                normalized.traceId(),
+                normalized.sessionId(),
+                normalized.userId(),
+                normalized.channel(),
+                normalized.actionType(),
+                normalized.actionId());
+        return agentCoreClient.post()
+                .uri("/api/agent/actions")
+                .header(REQUEST_ID_HEADER, normalized.traceId())
+                .contentType(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .bodyValue(normalized)
+                .retrieve()
+                .bodyToMono(AGENT_REPLY_TYPE)
+                .doOnNext(response -> logAgentCoreActionResponse(normalized, response))
+                .onErrorResume(error -> {
+                    LOGGER.warn(
+                            "Gateway转发聊天动作失败 traceId={} sessionId={} userId={} actionType={}",
+                            normalized.traceId(),
+                            normalized.sessionId(),
+                            normalized.userId(),
+                            normalized.actionType(),
+                            error);
+                    return Mono.just(ApiResponse.failure(ErrorCode.INTERNAL_ERROR, normalized.traceId()));
+                });
+    }
+
+    @GetMapping(value = "/api/chat/sessions/{sessionId}", produces = APPLICATION_JSON_UTF8)
+    public Mono<ApiResponse<ChatSessionView>> getSession(@PathVariable String sessionId) {
+        String traceId = TraceIds.newTraceId();
+        LOGGER.info("Gateway查询会话状态 traceId={} sessionId={}", traceId, sessionId);
+        return agentCoreClient.get()
+                .uri("/api/agent/sessions/{sessionId}", sessionId)
+                .header(REQUEST_ID_HEADER, traceId)
+                .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .retrieve()
+                .bodyToMono(CHAT_SESSION_TYPE)
+                .doOnNext(response -> LOGGER.info(
+                        "Gateway完成会话状态查询 traceId={} sessionId={} code={}",
+                        traceId,
+                        sessionId,
+                        response.code()))
+                .onErrorResume(error -> {
+                    LOGGER.warn("Gateway查询会话状态失败 traceId={} sessionId={}", traceId, sessionId, error);
+                    return Mono.just(ApiResponse.<ChatSessionView>failure(ErrorCode.INTERNAL_ERROR, traceId));
+                });
+    }
+
+    @GetMapping(value = "/api/chat/sessions/{sessionId}/messages", produces = APPLICATION_JSON_UTF8)
+    public Mono<ApiResponse<java.util.List<ChatMessageView>>> listMessages(
+            @PathVariable String sessionId,
+            @RequestParam(defaultValue = "100") int limit) {
+        String traceId = TraceIds.newTraceId();
+        LOGGER.info("Gateway查询会话消息 traceId={} sessionId={} limit={}", traceId, sessionId, limit);
+        return agentCoreClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/agent/sessions/{sessionId}/messages")
+                        .queryParam("limit", limit)
+                        .build(sessionId))
+                .header(REQUEST_ID_HEADER, traceId)
+                .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .retrieve()
+                .bodyToMono(CHAT_MESSAGES_TYPE)
+                .doOnNext(response -> LOGGER.info(
+                        "Gateway完成会话消息查询 traceId={} sessionId={} code={}",
+                        traceId,
+                        sessionId,
+                        response.code()))
+                .onErrorResume(error -> {
+                    LOGGER.warn("Gateway查询会话消息失败 traceId={} sessionId={}", traceId, sessionId, error);
+                    return Mono.just(ApiResponse.<java.util.List<ChatMessageView>>failure(ErrorCode.INTERNAL_ERROR, traceId));
+                });
+    }
+
+    private ChatRequest normalize(ChatRequest request) {
+        // 前端可以不传 traceId/sessionId；Gateway 统一补齐，方便后端全链路排查。
+        String traceId = hasText(request.traceId()) ? request.traceId() : TraceIds.newTraceId();
+        String sessionId = hasText(request.sessionId()) ? request.sessionId() : "s_" + UUID.randomUUID();
+        String channel = hasText(request.channel()) ? request.channel() : "h5";
+        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
+        return new ChatRequest(traceId, sessionId, request.userId(), channel, request.content(), metadata);
+    }
+
+    private ChatActionRequest normalizeAction(ChatActionRequest request) {
+        // 动作请求必须沿用原 sessionId，traceId 可由 Gateway 补齐。
+        String traceId = hasText(request.traceId()) ? request.traceId() : TraceIds.newTraceId();
+        String channel = hasText(request.channel()) ? request.channel() : "h5";
+        Map<String, Object> payload = request.payload() == null ? Map.of() : request.payload();
+        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
+        return new ChatActionRequest(
+                traceId,
+                request.sessionId(),
+                request.userId(),
+                channel,
+                request.actionId(),
+                request.actionType(),
+                request.content(),
+                payload,
+                metadata);
+    }
+
+    private void logAgentCoreResponse(ChatRequest request, ApiResponse<AgentReply> response) {
+        AgentReply reply = response.data();
+        if (reply == null) {
+            LOGGER.warn(
+                    "Gateway收到Agent Core空响应 traceId={} sessionId={} code={} message={}",
+                    request.traceId(),
+                    request.sessionId(),
+                    response.code(),
+                    response.message());
+            return;
+        }
+        LOGGER.info(
+                "Gateway完成聊天转发 traceId={} sessionId={} code={} routeDecision={} riskLevel={} ticketId={}",
+                request.traceId(),
+                request.sessionId(),
+                response.code(),
+                reply.routeDecision(),
+                reply.riskLevel(),
+                reply.ticketId());
+    }
+
+    private void logAgentCoreActionResponse(ChatActionRequest request, ApiResponse<AgentReply> response) {
+        AgentReply reply = response.data();
+        if (reply == null) {
+            LOGGER.warn(
+                    "Gateway收到Agent Core动作空响应 traceId={} sessionId={} code={} message={}",
+                    request.traceId(),
+                    request.sessionId(),
+                    response.code(),
+                    response.message());
+            return;
+        }
+        LOGGER.info(
+                "Gateway完成聊天动作转发 traceId={} sessionId={} code={} actionType={} routeDecision={} riskLevel={}",
+                request.traceId(),
+                request.sessionId(),
+                response.code(),
+                request.actionType(),
+                reply.routeDecision(),
+                reply.riskLevel());
+    }
+
+    private int contentLength(String content) {
+        return content == null ? 0 : content.length();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+}

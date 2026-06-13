@@ -1,0 +1,23 @@
+# smartcs-agent-core
+
+Agent 核心编排模块，负责从自然语言输入到处理决策的主链路。
+
+当前只保留工程骨架，后续可放置：
+
+- NLU：意图识别、实体抽取、置信度校准
+- Conversation：多轮对话、槽位填充、状态机
+- Risk：L0-L3 风控路由与动态升级
+- Router：技能路由、人工兜底路由
+- Prompt：提示词模板版本管理
+
+当前已提供：
+
+- 启动类：`com.smartcs.agent.core.SmartCsAgentCoreApplication`
+- 健康检查：`GET /api/health`
+- 本地开发默认端口：`8081`
+
+边界：
+
+- 可以做决策和编排，不沉淀电商业务实现
+- 查询订单、修改地址、退款、换货等动作通过 skill-engine 或业务适配层完成
+- L3 敏感操作必须进入人工审核链路

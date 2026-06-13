@@ -7,6 +7,9 @@
 # 编译输出
 target/
 build/
+dist/
+node_modules/
+*.tsbuildinfo
 
 # 日志
 *.log

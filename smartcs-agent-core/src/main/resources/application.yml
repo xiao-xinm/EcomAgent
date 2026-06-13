@@ -1,8 +1,0 @@
-server:
-  port: 8081
-
-spring:
-  application:
-    name: smartcs-agent-core
-  profiles:
-    active: dev

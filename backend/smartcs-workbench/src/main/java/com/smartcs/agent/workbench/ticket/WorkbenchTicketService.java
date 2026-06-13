@@ -1,0 +1,1008 @@
+package com.smartcs.agent.workbench.ticket;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.smartcs.agent.common.dto.PageResult;
+import com.smartcs.agent.common.enums.ErrorCode;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionLogView;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalDecisionRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalTaskView;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.HumanTakeoverView;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.MessageView;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.WorkOrderView;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 坐席工作台服务：负责工单领取、审批、人工接管和操作审计。
+ */
+@Service
+public class WorkbenchTicketService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(WorkbenchTicketService.class);
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
+    };
+    private static final TypeReference<List<Object>> LIST_TYPE = new TypeReference<>() {
+    };
+    private static final List<String> TERMINAL_WORK_ORDER_STATUSES =
+            List.of("APPROVED", "REJECTED", "RESOLVED", "CLOSED");
+    private static final List<String> OPEN_APPROVAL_STATUSES = List.of("PENDING", "CLAIMED");
+    private static final List<String> TERMINAL_TAKEOVER_STATUSES = List.of("RESOLVED", "CANCELLED");
+
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
+
+    public WorkbenchTicketService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
+    }
+
+    public PageResult<TicketSummary> listTickets(
+            String status,
+            String routeDecision,
+            String assignedAgent,
+            String keyword,
+            int pageNo,
+            int pageSize) {
+        int normalizedPageNo = Math.max(pageNo, 1);
+        int normalizedPageSize = Math.min(Math.max(pageSize, 1), 200);
+        SqlFilter filter = buildTicketFilter(status, routeDecision, assignedAgent, keyword);
+
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM work_order w " + filter.whereSql(),
+                Long.class,
+                filter.args().toArray());
+
+        List<Object> args = new ArrayList<>(filter.args());
+        args.add(normalizedPageSize);
+        args.add((normalizedPageNo - 1) * normalizedPageSize);
+        List<TicketSummary> records = jdbcTemplate.query(
+                """
+                SELECT
+                    w.ticket_id, w.trace_id, w.session_id, w.user_id, w.intent, w.risk_level,
+                    w.route_decision, w.status, w.priority, w.assigned_agent, w.reason,
+                    w.sla_deadline, w.created_at, w.updated_at,
+                    a.approval_id, a.approval_type, a.status AS approval_status,
+                    h.takeover_id, h.status AS takeover_status
+                FROM work_order w
+                LEFT JOIN approval_task a ON a.ticket_id = w.ticket_id
+                LEFT JOIN human_takeover h ON h.ticket_id = w.ticket_id
+                """ + filter.whereSql() + """
+
+                ORDER BY w.created_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                this::mapTicketSummary,
+                args.toArray());
+
+        long normalizedTotal = total == null ? 0 : total;
+        LOGGER.info(
+                "查询工单列表 status={} routeDecision={} assignedAgent={} keywordPresent={} pageNo={} pageSize={} total={} returned={}",
+                status,
+                routeDecision,
+                assignedAgent,
+                hasText(keyword),
+                normalizedPageNo,
+                normalizedPageSize,
+                normalizedTotal,
+                records.size());
+        return new PageResult<>(records, normalizedTotal, normalizedPageNo, normalizedPageSize);
+    }
+
+    public TicketDetail getTicketDetail(String ticketId) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        LOGGER.info(
+                "查询工单详情 ticketId={} traceId={} sessionId={} status={} routeDecision={}",
+                ticket.ticketId(),
+                ticket.traceId(),
+                ticket.sessionId(),
+                ticket.status(),
+                ticket.routeDecision());
+        return new TicketDetail(
+                ticket,
+                findApproval(ticketId).orElse(null),
+                findTakeover(ticketId).orElse(null),
+                listMessages(ticket.sessionId()),
+                listActions(ticketId));
+    }
+
+    public List<ActionLogView> listActions(String ticketId) {
+        requireTicket(ticketId);
+        List<ActionLogView> actions = jdbcTemplate.query(
+                """
+                SELECT
+                    action_id,
+                    'WORK_ORDER' AS source,
+                    ticket_id,
+                    trace_id,
+                    operator_id,
+                    action_type,
+                    NULL AS before_status,
+                    NULL AS after_status,
+                    comment,
+                    action_data,
+                    created_at
+                FROM work_order_action
+                WHERE ticket_id = ?
+                UNION ALL
+                SELECT
+                    action_id,
+                    'APPROVAL' AS source,
+                    ticket_id,
+                    trace_id,
+                    operator_id,
+                    action_type,
+                    before_status,
+                    after_status,
+                    comment,
+                    action_data,
+                    created_at
+                FROM approval_action
+                WHERE ticket_id = ?
+                ORDER BY created_at ASC
+                """,
+                this::mapActionLog,
+                ticketId,
+                ticketId);
+        LOGGER.info("查询工单操作日志 ticketId={} count={}", ticketId, actions.size());
+        return actions;
+    }
+
+    @Transactional
+    public ActionResult claim(String ticketId, OperatorActionRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        rejectTerminalWorkOrder(ticket.status());
+        LOGGER.info(
+                "坐席领取工单开始 ticketId={} traceId={} operatorId={} beforeStatus={}",
+                ticketId,
+                ticket.traceId(),
+                request.operatorId(),
+                ticket.status());
+
+        String beforeStatus = ticket.status();
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE work_order
+                SET status = 'PROCESSING', assigned_agent = ?
+                WHERE ticket_id = ? AND status IN ('PENDING', 'ASSIGNED', 'PROCESSING', 'ESCALATED')
+                """,
+                request.operatorId(),
+                ticketId);
+        if (updated == 0) {
+            throw rejected("当前工单状态不允许领取");
+        }
+
+        findApproval(ticketId).ifPresent(approval -> claimApprovalIfOpen(approval, request));
+        findTakeover(ticketId).ifPresent(takeover -> assignTakeoverIfOpen(takeover, request));
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "ASSIGN", request.comment(),
+                data("beforeStatus", beforeStatus, "afterStatus", "PROCESSING", "payload", request.payload()));
+        insertAudit(ticket, request.operatorId(), "WORK_ORDER_CLAIMED",
+                data("beforeStatus", beforeStatus, "afterStatus", "PROCESSING"));
+        ActionResult result = currentResult(ticketId, "工单已领取");
+        logActionResult("坐席领取工单完成", result, request.operatorId());
+        return result;
+    }
+
+    @Transactional
+    public ActionResult approve(String ticketId, ApprovalDecisionRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        rejectTerminalWorkOrder(ticket.status());
+        ApprovalTaskView approval = requireApproval(ticketId);
+        requireOpenApproval(approval.status());
+        LOGGER.info(
+                "审批通过开始 ticketId={} traceId={} approvalId={} operatorId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
+                ticketId,
+                ticket.traceId(),
+                approval.approvalId(),
+                request.operatorId(),
+                ticket.status(),
+                approval.status());
+
+        Map<String, Object> result = data(
+                "decision", "APPROVED",
+                "comment", request.comment(),
+                "operatorId", request.operatorId(),
+                "result", request.result());
+        jdbcTemplate.update(
+                """
+                UPDATE approval_task
+                SET status = 'APPROVED',
+                    assigned_reviewer = ?,
+                    approval_result = CAST(? AS JSON),
+                    completed_at = CURRENT_TIMESTAMP(3)
+                WHERE approval_id = ?
+                """,
+                request.operatorId(),
+                json(result),
+                approval.approvalId());
+        jdbcTemplate.update(
+                """
+                UPDATE work_order
+                SET status = 'APPROVED',
+                    assigned_agent = ?,
+                    resolution = CAST(? AS JSON),
+                    resolved_at = CURRENT_TIMESTAMP(3)
+                WHERE ticket_id = ?
+                """,
+                request.operatorId(),
+                json(result),
+                ticketId);
+        updateSessionState(ticket.sessionId(), "ACTIVE", "COMPLETED");
+        insertApprovalAction(approval, request.operatorId(), "APPROVE", approval.status(), "APPROVED",
+                request.comment(), result);
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "APPROVE", request.comment(),
+                data("beforeStatus", ticket.status(), "afterStatus", "APPROVED", "approvalId", approval.approvalId()));
+        insertAudit(ticket, request.operatorId(), "APPROVAL_APPROVED",
+                data("approvalId", approval.approvalId(), "beforeStatus", approval.status(), "afterStatus", "APPROVED"));
+        insertUserVisibleMessage(ticket, "SYSTEM", approvalApprovedContent(approval), request.operatorId(),
+                "APPROVAL_APPROVED",
+                data("approvalId", approval.approvalId(), "approvalType", approval.approvalType(),
+                        "approvalStatus", "APPROVED", "workOrderStatus", "APPROVED"));
+        ActionResult actionResult = currentResult(ticketId, "审批已通过");
+        logActionResult("审批通过完成", actionResult, request.operatorId());
+        return actionResult;
+    }
+
+    @Transactional
+    public ActionResult reject(String ticketId, ApprovalDecisionRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        rejectTerminalWorkOrder(ticket.status());
+        ApprovalTaskView approval = requireApproval(ticketId);
+        requireOpenApproval(approval.status());
+        LOGGER.info(
+                "审批驳回开始 ticketId={} traceId={} approvalId={} operatorId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
+                ticketId,
+                ticket.traceId(),
+                approval.approvalId(),
+                request.operatorId(),
+                ticket.status(),
+                approval.status());
+
+        Map<String, Object> result = data(
+                "decision", "REJECTED",
+                "comment", request.comment(),
+                "operatorId", request.operatorId(),
+                "result", request.result());
+        jdbcTemplate.update(
+                """
+                UPDATE approval_task
+                SET status = 'REJECTED',
+                    assigned_reviewer = ?,
+                    approval_result = CAST(? AS JSON),
+                    completed_at = CURRENT_TIMESTAMP(3)
+                WHERE approval_id = ?
+                """,
+                request.operatorId(),
+                json(result),
+                approval.approvalId());
+        jdbcTemplate.update(
+                """
+                UPDATE work_order
+                SET status = 'REJECTED',
+                    assigned_agent = ?,
+                    resolution = CAST(? AS JSON),
+                    resolved_at = CURRENT_TIMESTAMP(3)
+                WHERE ticket_id = ?
+                """,
+                request.operatorId(),
+                json(result),
+                ticketId);
+        updateSessionState(ticket.sessionId(), "ACTIVE", "COMPLETED");
+        insertApprovalAction(approval, request.operatorId(), "REJECT", approval.status(), "REJECTED",
+                request.comment(), result);
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "REJECT", request.comment(),
+                data("beforeStatus", ticket.status(), "afterStatus", "REJECTED", "approvalId", approval.approvalId()));
+        insertAudit(ticket, request.operatorId(), "APPROVAL_REJECTED",
+                data("approvalId", approval.approvalId(), "beforeStatus", approval.status(), "afterStatus", "REJECTED"));
+        insertUserVisibleMessage(ticket, "SYSTEM", approvalRejectedContent(approval), request.operatorId(),
+                "APPROVAL_REJECTED",
+                data("approvalId", approval.approvalId(), "approvalType", approval.approvalType(),
+                        "approvalStatus", "REJECTED", "workOrderStatus", "REJECTED"));
+        ActionResult actionResult = currentResult(ticketId, "审批已驳回");
+        logActionResult("审批驳回完成", actionResult, request.operatorId());
+        return actionResult;
+    }
+
+    @Transactional
+    public ActionResult startTakeover(String ticketId, OperatorActionRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        rejectTerminalWorkOrder(ticket.status());
+        HumanTakeoverView takeover = findTakeover(ticketId)
+                .orElseGet(() -> createTakeover(ticket, request));
+        rejectTerminalTakeover(takeover.status());
+        LOGGER.info(
+                "人工接管开始 ticketId={} traceId={} takeoverId={} operatorId={} beforeWorkOrderStatus={} beforeTakeoverStatus={}",
+                ticketId,
+                ticket.traceId(),
+                takeover.takeoverId(),
+                request.operatorId(),
+                ticket.status(),
+                takeover.status());
+
+        jdbcTemplate.update(
+                """
+                UPDATE human_takeover
+                SET status = 'IN_PROGRESS',
+                    assigned_agent = ?,
+                    started_at = COALESCE(started_at, CURRENT_TIMESTAMP(3))
+                WHERE takeover_id = ?
+                """,
+                request.operatorId(),
+                takeover.takeoverId());
+        jdbcTemplate.update(
+                """
+                UPDATE work_order
+                SET status = 'PROCESSING',
+                    assigned_agent = ?
+                WHERE ticket_id = ?
+                """,
+                request.operatorId(),
+                ticketId);
+        updateSessionState(ticket.sessionId(), "HUMAN_TAKEOVER", "HUMAN_TAKEOVER");
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "TAKEOVER", request.comment(),
+                data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", "IN_PROGRESS",
+                        "payload", request.payload()));
+        insertAudit(ticket, request.operatorId(), "TAKEOVER_STARTED",
+                data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", "IN_PROGRESS"));
+        insertUserVisibleMessage(ticket, "HUMAN_AGENT", takeoverStartedContent(), request.operatorId(),
+                "TAKEOVER_STARTED",
+                data("takeoverId", takeover.takeoverId(), "takeoverStatus", "IN_PROGRESS",
+                        "workOrderStatus", "PROCESSING"));
+        ActionResult result = currentResult(ticketId, "人工接管已开始");
+        logActionResult("人工接管开始完成", result, request.operatorId());
+        return result;
+    }
+
+    @Transactional
+    public ActionResult finishTakeover(String ticketId, TakeoverFinishRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        HumanTakeoverView takeover = findTakeover(ticketId)
+                .orElseThrow(() -> rejected("当前工单没有人工接管记录"));
+        rejectTerminalTakeover(takeover.status());
+
+        String takeoverTarget = normalizeTakeoverTarget(request.resolutionStatus());
+        String workOrderTarget = "RESOLVED".equals(takeoverTarget) ? "RESOLVED" : "CLOSED";
+        LOGGER.info(
+                "人工接管结束开始 ticketId={} traceId={} takeoverId={} operatorId={} targetTakeoverStatus={} targetWorkOrderStatus={}",
+                ticketId,
+                ticket.traceId(),
+                takeover.takeoverId(),
+                request.operatorId(),
+                takeoverTarget,
+                workOrderTarget);
+        Map<String, Object> result = data(
+                "takeoverStatus", takeoverTarget,
+                "workOrderStatus", workOrderTarget,
+                "comment", request.comment(),
+                "operatorId", request.operatorId(),
+                "result", request.result());
+
+        jdbcTemplate.update(
+                """
+                UPDATE human_takeover
+                SET status = ?,
+                    assigned_agent = ?,
+                    ended_at = CURRENT_TIMESTAMP(3)
+                WHERE takeover_id = ?
+                """,
+                takeoverTarget,
+                request.operatorId(),
+                takeover.takeoverId());
+        jdbcTemplate.update(
+                """
+                UPDATE work_order
+                SET status = ?,
+                    assigned_agent = ?,
+                    resolution = CAST(? AS JSON),
+                    resolved_at = CURRENT_TIMESTAMP(3)
+                WHERE ticket_id = ?
+                """,
+                workOrderTarget,
+                request.operatorId(),
+                json(result),
+                ticketId);
+        updateSessionState(ticket.sessionId(), "CLOSED", "CLOSED");
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "CLOSE", request.comment(),
+                data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", takeoverTarget));
+        insertAudit(ticket, request.operatorId(), "TAKEOVER_FINISHED",
+                data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", takeoverTarget));
+        insertUserVisibleMessage(ticket, "HUMAN_AGENT", takeoverFinishedContent(takeoverTarget), request.operatorId(),
+                "TAKEOVER_FINISHED",
+                data("takeoverId", takeover.takeoverId(), "takeoverStatus", takeoverTarget,
+                        "workOrderStatus", workOrderTarget));
+        ActionResult actionResult = currentResult(ticketId, "人工接管已结束");
+        logActionResult("人工接管结束完成", actionResult, request.operatorId());
+        return actionResult;
+    }
+
+    private SqlFilter buildTicketFilter(String status, String routeDecision, String assignedAgent, String keyword) {
+        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
+        List<Object> args = new ArrayList<>();
+        if (hasText(status)) {
+            where.append(" AND w.status = ?");
+            args.add(status);
+        }
+        if (hasText(routeDecision)) {
+            where.append(" AND w.route_decision = ?");
+            args.add(routeDecision);
+        }
+        if (hasText(assignedAgent)) {
+            where.append(" AND w.assigned_agent = ?");
+            args.add(assignedAgent);
+        }
+        if (hasText(keyword)) {
+            String like = "%" + keyword.trim() + "%";
+            where.append("""
+                    AND (
+                        w.ticket_id LIKE ?
+                        OR w.session_id LIKE ?
+                        OR w.user_id LIKE ?
+                        OR w.intent LIKE ?
+                    )
+                    """);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+        return new SqlFilter(where.toString(), args);
+    }
+
+    private WorkOrderView requireTicket(String ticketId) {
+        return findTicket(ticketId)
+                .orElseThrow(() -> new WorkbenchOperationException(ErrorCode.TICKET_NOT_FOUND, "工单不存在"));
+    }
+
+    private ApprovalTaskView requireApproval(String ticketId) {
+        return findApproval(ticketId)
+                .orElseThrow(() -> rejected("当前工单没有审批任务"));
+    }
+
+    private Optional<WorkOrderView> findTicket(String ticketId) {
+        return queryOptional(
+                """
+                SELECT
+                    ticket_id, trace_id, session_id, user_id, intent, risk_level, route_decision,
+                    status, priority, assigned_agent, reason, context_snapshot, resolution,
+                    sla_deadline, created_at, updated_at, resolved_at
+                FROM work_order
+                WHERE ticket_id = ?
+                """,
+                this::mapWorkOrder,
+                ticketId);
+    }
+
+    private Optional<ApprovalTaskView> findApproval(String ticketId) {
+        return queryOptional(
+                """
+                SELECT
+                    approval_id, ticket_id, trace_id, session_id, user_id, intent, approval_type,
+                    risk_level, route_decision, status, priority, assigned_reviewer, risk_reason,
+                    request_payload, context_snapshot, approval_result, expire_at, created_at,
+                    updated_at, completed_at
+                FROM approval_task
+                WHERE ticket_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                this::mapApproval,
+                ticketId);
+    }
+
+    private Optional<HumanTakeoverView> findTakeover(String ticketId) {
+        return queryOptional(
+                """
+                SELECT
+                    takeover_id, ticket_id, trace_id, session_id, user_id, trigger_source, status,
+                    priority, assigned_agent, reason, context_snapshot, started_at, ended_at,
+                    created_at, updated_at
+                FROM human_takeover
+                WHERE ticket_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                this::mapTakeover,
+                ticketId);
+    }
+
+    private List<MessageView> listMessages(String sessionId) {
+        return jdbcTemplate.query(
+                """
+                SELECT
+                    message_id, trace_id, session_id, user_id, role, message_type, content,
+                    quick_actions, intent, risk_level, route_decision, metadata, created_at
+                FROM cs_message
+                WHERE session_id = ?
+                ORDER BY created_at ASC
+                LIMIT 100
+                """,
+                this::mapMessage,
+                sessionId);
+    }
+
+    private void claimApprovalIfOpen(ApprovalTaskView approval, OperatorActionRequest request) {
+        if (!OPEN_APPROVAL_STATUSES.contains(approval.status())) {
+            return;
+        }
+        jdbcTemplate.update(
+                """
+                UPDATE approval_task
+                SET status = 'CLAIMED',
+                    assigned_reviewer = ?
+                WHERE approval_id = ?
+                """,
+                request.operatorId(),
+                approval.approvalId());
+        insertApprovalAction(approval, request.operatorId(), "CLAIM", approval.status(), "CLAIMED",
+                request.comment(), data("payload", request.payload()));
+    }
+
+    private void assignTakeoverIfOpen(HumanTakeoverView takeover, OperatorActionRequest request) {
+        if (TERMINAL_TAKEOVER_STATUSES.contains(takeover.status())) {
+            return;
+        }
+        jdbcTemplate.update(
+                """
+                UPDATE human_takeover
+                SET status = 'ASSIGNED',
+                    assigned_agent = ?
+                WHERE takeover_id = ? AND status IN ('REQUESTED', 'QUEUED', 'ASSIGNED')
+                """,
+                request.operatorId(),
+                takeover.takeoverId());
+    }
+
+    private HumanTakeoverView createTakeover(WorkOrderView ticket, OperatorActionRequest request) {
+        // 坐席也可以从普通工单主动发起接管，这里补一条 human_takeover 记录。
+        String takeoverId = "ht_" + UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO human_takeover (
+                    takeover_id, ticket_id, trace_id, session_id, user_id, trigger_source,
+                    status, priority, assigned_agent, reason, context_snapshot
+                ) VALUES (?, ?, ?, ?, ?, 'HUMAN_ASSIGNMENT', 'REQUESTED', ?, ?, ?, CAST(? AS JSON))
+                """,
+                takeoverId,
+                ticket.ticketId(),
+                ticket.traceId(),
+                ticket.sessionId(),
+                ticket.userId(),
+                ticket.priority(),
+                request.operatorId(),
+                textOr(request.comment(), "坐席主动接管"),
+                json(data("source", "workbench", "payload", request.payload())));
+        LOGGER.info(
+                "坐席主动创建人工接管记录 ticketId={} traceId={} takeoverId={} operatorId={}",
+                ticket.ticketId(),
+                ticket.traceId(),
+                takeoverId,
+                request.operatorId());
+        return findTakeover(ticket.ticketId())
+                .orElseThrow(() -> rejected("人工接管记录创建失败"));
+    }
+
+    private void insertWorkOrderAction(
+            String ticketId,
+            String traceId,
+            String operatorId,
+            String actionType,
+            String comment,
+            Map<String, Object> actionData) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO work_order_action (
+                    action_id, ticket_id, trace_id, operator_id, action_type, comment, action_data
+                ) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON))
+                """,
+                "wa_" + UUID.randomUUID(),
+                ticketId,
+                traceId,
+                operatorId,
+                actionType,
+                comment,
+                json(actionData));
+    }
+
+    private void insertApprovalAction(
+            ApprovalTaskView approval,
+            String operatorId,
+            String actionType,
+            String beforeStatus,
+            String afterStatus,
+            String comment,
+            Map<String, Object> actionData) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO approval_action (
+                    action_id, approval_id, ticket_id, trace_id, operator_id, action_type,
+                    before_status, after_status, comment, action_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON))
+                """,
+                "aa_" + UUID.randomUUID(),
+                approval.approvalId(),
+                approval.ticketId(),
+                approval.traceId(),
+                operatorId,
+                actionType,
+                beforeStatus,
+                afterStatus,
+                comment,
+                json(actionData));
+    }
+
+    private void insertUserVisibleMessage(
+            WorkOrderView ticket,
+            String role,
+            String content,
+            String operatorId,
+            String actionType,
+            Map<String, Object> eventData) {
+        // 坐席处理结果需要回写到会话消息，用户端 H5 才能在原会话里看到人工处理进度。
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("source", "workbench");
+        metadata.put("ticketId", ticket.ticketId());
+        metadata.put("operatorId", operatorId);
+        metadata.put("actionType", actionType);
+        if (eventData != null) {
+            metadata.putAll(eventData);
+        }
+
+        String messageId = "m_" + UUID.randomUUID();
+        jdbcTemplate.update(
+                """
+                INSERT INTO cs_message (
+                    message_id, trace_id, session_id, user_id, role, message_type,
+                    content, intent, risk_level, route_decision, metadata
+                ) VALUES (?, ?, ?, ?, ?, 'TEXT', ?, ?, ?, ?, CAST(? AS JSON))
+                """,
+                messageId,
+                ticket.traceId(),
+                ticket.sessionId(),
+                ticket.userId(),
+                role,
+                content,
+                ticket.intent(),
+                ticket.riskLevel(),
+                ticket.routeDecision(),
+                json(metadata));
+        LOGGER.info(
+                "写入用户可见坐席消息 ticketId={} traceId={} sessionId={} messageId={} role={} actionType={}",
+                ticket.ticketId(),
+                ticket.traceId(),
+                ticket.sessionId(),
+                messageId,
+                role,
+                actionType);
+    }
+
+    private String approvalApprovedContent(ApprovalTaskView approval) {
+        if ("REFUND".equalsIgnoreCase(approval.approvalType())) {
+            return "你的退款申请已通过人工审核，后续处理会按平台流程继续推进。";
+        }
+        if ("EXCHANGE".equalsIgnoreCase(approval.approvalType())) {
+            return "你的换货申请已通过人工审核，后续处理会按平台流程继续推进。";
+        }
+        return "你的申请已通过人工审核，后续处理会按平台流程继续推进。";
+    }
+
+    private String approvalRejectedContent(ApprovalTaskView approval) {
+        if ("REFUND".equalsIgnoreCase(approval.approvalType())) {
+            return "你的退款申请未通过人工审核，如有疑问可以继续联系人工客服。";
+        }
+        if ("EXCHANGE".equalsIgnoreCase(approval.approvalType())) {
+            return "你的换货申请未通过人工审核，如有疑问可以继续联系人工客服。";
+        }
+        return "你的申请未通过人工审核，如有疑问可以继续联系人工客服。";
+    }
+
+    private String takeoverStartedContent() {
+        return "人工客服已接入，正在为你处理，请稍等。";
+    }
+
+    private String takeoverFinishedContent(String takeoverStatus) {
+        if ("CANCELLED".equalsIgnoreCase(takeoverStatus)) {
+            return "人工客服已结束本次处理，如仍需帮助可以继续发起咨询。";
+        }
+        return "人工客服已处理完成，本次服务已结束。";
+    }
+
+    private void insertAudit(WorkOrderView ticket, String operatorId, String eventType, Map<String, Object> eventData) {
+        // 审计日志用于问题追踪和后续合规检查，所有坐席动作都保留一条独立事件。
+        jdbcTemplate.update(
+                """
+                INSERT INTO audit_log (
+                    event_id, trace_id, session_id, ticket_id, user_id, operator_id,
+                    event_type, event_data, occurred_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?)
+                """,
+                "evt_" + UUID.randomUUID(),
+                ticket.traceId(),
+                ticket.sessionId(),
+                ticket.ticketId(),
+                ticket.userId(),
+                operatorId,
+                eventType,
+                json(eventData),
+                Timestamp.from(Instant.now()));
+        LOGGER.debug(
+                "写入坐席审计日志 ticketId={} traceId={} operatorId={} eventType={}",
+                ticket.ticketId(),
+                ticket.traceId(),
+                operatorId,
+                eventType);
+    }
+
+    private void updateSessionState(String sessionId, String status, String dialogState) {
+        jdbcTemplate.update(
+                """
+                UPDATE cs_session
+                SET status = ?,
+                    dialog_state = ?
+                WHERE session_id = ?
+                """,
+                status,
+                dialogState,
+                sessionId);
+    }
+
+    private ActionResult currentResult(String ticketId, String message) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        ApprovalTaskView approval = findApproval(ticketId).orElse(null);
+        HumanTakeoverView takeover = findTakeover(ticketId).orElse(null);
+        return new ActionResult(
+                ticketId,
+                ticket.status(),
+                approval == null ? null : approval.status(),
+                takeover == null ? null : takeover.status(),
+                message);
+    }
+
+    private void logActionResult(String actionName, ActionResult result, String operatorId) {
+        LOGGER.info(
+                "{} ticketId={} operatorId={} workOrderStatus={} approvalStatus={} takeoverStatus={}",
+                actionName,
+                result.ticketId(),
+                operatorId,
+                result.workOrderStatus(),
+                result.approvalStatus(),
+                result.takeoverStatus());
+    }
+
+    private void rejectTerminalWorkOrder(String status) {
+        if (TERMINAL_WORK_ORDER_STATUSES.contains(status)) {
+            throw rejected("当前工单已处于终态，不能继续操作");
+        }
+    }
+
+    private void requireOpenApproval(String status) {
+        if (!OPEN_APPROVAL_STATUSES.contains(status)) {
+            throw rejected("当前审批任务状态不允许审核");
+        }
+    }
+
+    private void rejectTerminalTakeover(String status) {
+        if (TERMINAL_TAKEOVER_STATUSES.contains(status)) {
+            throw rejected("当前人工接管已结束，不能继续操作");
+        }
+    }
+
+    private String normalizeTakeoverTarget(String resolutionStatus) {
+        String target = textOr(resolutionStatus, "RESOLVED").toUpperCase();
+        if (!TERMINAL_TAKEOVER_STATUSES.contains(target)) {
+            throw rejected("人工接管结束状态只能是 RESOLVED 或 CANCELLED");
+        }
+        return target;
+    }
+
+    private WorkbenchOperationException rejected(String message) {
+        return new WorkbenchOperationException(ErrorCode.TICKET_ACTION_REJECTED, message);
+    }
+
+    private TicketSummary mapTicketSummary(ResultSet rs, int rowNum) throws SQLException {
+        return new TicketSummary(
+                rs.getString("ticket_id"),
+                rs.getString("trace_id"),
+                rs.getString("session_id"),
+                rs.getString("user_id"),
+                rs.getString("intent"),
+                rs.getString("risk_level"),
+                rs.getString("route_decision"),
+                rs.getString("status"),
+                rs.getString("priority"),
+                rs.getString("assigned_agent"),
+                rs.getString("reason"),
+                instant(rs, "sla_deadline"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"),
+                rs.getString("approval_id"),
+                rs.getString("approval_type"),
+                rs.getString("approval_status"),
+                rs.getString("takeover_id"),
+                rs.getString("takeover_status"));
+    }
+
+    private WorkOrderView mapWorkOrder(ResultSet rs, int rowNum) throws SQLException {
+        return new WorkOrderView(
+                rs.getString("ticket_id"),
+                rs.getString("trace_id"),
+                rs.getString("session_id"),
+                rs.getString("user_id"),
+                rs.getString("intent"),
+                rs.getString("risk_level"),
+                rs.getString("route_decision"),
+                rs.getString("status"),
+                rs.getString("priority"),
+                rs.getString("assigned_agent"),
+                rs.getString("reason"),
+                mapJson(rs, "context_snapshot"),
+                mapJson(rs, "resolution"),
+                instant(rs, "sla_deadline"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"),
+                instant(rs, "resolved_at"));
+    }
+
+    private ApprovalTaskView mapApproval(ResultSet rs, int rowNum) throws SQLException {
+        return new ApprovalTaskView(
+                rs.getString("approval_id"),
+                rs.getString("ticket_id"),
+                rs.getString("trace_id"),
+                rs.getString("session_id"),
+                rs.getString("user_id"),
+                rs.getString("intent"),
+                rs.getString("approval_type"),
+                rs.getString("risk_level"),
+                rs.getString("route_decision"),
+                rs.getString("status"),
+                rs.getString("priority"),
+                rs.getString("assigned_reviewer"),
+                rs.getString("risk_reason"),
+                mapJson(rs, "request_payload"),
+                mapJson(rs, "context_snapshot"),
+                mapJson(rs, "approval_result"),
+                instant(rs, "expire_at"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"),
+                instant(rs, "completed_at"));
+    }
+
+    private HumanTakeoverView mapTakeover(ResultSet rs, int rowNum) throws SQLException {
+        return new HumanTakeoverView(
+                rs.getString("takeover_id"),
+                rs.getString("ticket_id"),
+                rs.getString("trace_id"),
+                rs.getString("session_id"),
+                rs.getString("user_id"),
+                rs.getString("trigger_source"),
+                rs.getString("status"),
+                rs.getString("priority"),
+                rs.getString("assigned_agent"),
+                rs.getString("reason"),
+                mapJson(rs, "context_snapshot"),
+                instant(rs, "started_at"),
+                instant(rs, "ended_at"),
+                instant(rs, "created_at"),
+                instant(rs, "updated_at"));
+    }
+
+    private MessageView mapMessage(ResultSet rs, int rowNum) throws SQLException {
+        return new MessageView(
+                rs.getString("message_id"),
+                rs.getString("trace_id"),
+                rs.getString("session_id"),
+                rs.getString("user_id"),
+                rs.getString("role"),
+                rs.getString("message_type"),
+                rs.getString("content"),
+                listJson(rs, "quick_actions"),
+                rs.getString("intent"),
+                rs.getString("risk_level"),
+                rs.getString("route_decision"),
+                mapJson(rs, "metadata"),
+                instant(rs, "created_at"));
+    }
+
+    private ActionLogView mapActionLog(ResultSet rs, int rowNum) throws SQLException {
+        return new ActionLogView(
+                rs.getString("action_id"),
+                rs.getString("source"),
+                rs.getString("ticket_id"),
+                rs.getString("trace_id"),
+                rs.getString("operator_id"),
+                rs.getString("action_type"),
+                rs.getString("before_status"),
+                rs.getString("after_status"),
+                rs.getString("comment"),
+                mapJson(rs, "action_data"),
+                instant(rs, "created_at"));
+    }
+
+    private <T> Optional<T> queryOptional(String sql, RowMapper<T> mapper, Object... args) {
+        List<T> rows = jdbcTemplate.query(sql, mapper, args);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    private Instant instant(ResultSet rs, String column) throws SQLException {
+        Timestamp timestamp = rs.getTimestamp(column);
+        return timestamp == null ? null : timestamp.toInstant();
+    }
+
+    private Map<String, Object> mapJson(ResultSet rs, String column) throws SQLException {
+        String value = jsonColumn(rs, column);
+        if (!hasText(value)) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(value, MAP_TYPE);
+        } catch (JsonProcessingException e) {
+            return Map.of("raw", value);
+        }
+    }
+
+    private List<Object> listJson(ResultSet rs, String column) throws SQLException {
+        String value = jsonColumn(rs, column);
+        if (!hasText(value)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(value, LIST_TYPE);
+        } catch (JsonProcessingException e) {
+            return List.of(value);
+        }
+    }
+
+    private String jsonColumn(ResultSet rs, String column) throws SQLException {
+        Object value = rs.getObject(column);
+        return value == null ? null : value.toString();
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value == null ? Map.of() : value);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Unable to serialize JSON payload", e);
+        }
+    }
+
+    private Map<String, Object> data(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            Object value = pairs[i + 1];
+            if (value != null) {
+                map.put((String) pairs[i], value);
+            }
+        }
+        return map;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String textOr(String value, String fallback) {
+        return hasText(value) ? value : fallback;
+    }
+
+    private record SqlFilter(String whereSql, List<Object> args) {
+    }
+}

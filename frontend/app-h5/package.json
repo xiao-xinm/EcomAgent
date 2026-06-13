@@ -1,0 +1,13 @@
+{
+  "name": "@smartcs/app-h5",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SmartCS Agent APP embedded H5 shell",
+  "scripts": {
+    "dev": "echo \"app-h5 frontend scaffold only\"",
+    "build": "echo \"app-h5 frontend scaffold only\"",
+    "lint": "echo \"app-h5 frontend scaffold only\"",
+    "typecheck": "echo \"app-h5 frontend scaffold only\"",
+    "test": "echo \"app-h5 frontend scaffold only\""
+  }
+}

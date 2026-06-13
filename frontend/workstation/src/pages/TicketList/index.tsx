@@ -1,0 +1,197 @@
+import React, { useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, Tag, Space, message } from "antd";
+import { EyeOutlined } from "@ant-design/icons";
+import type { ActionType, ProColumns } from "@ant-design/pro-components";
+import { ProTable } from "@ant-design/pro-components";
+import dayjs from "dayjs";
+import { fetchTickets, claimTicket } from "../../services/api";
+import type { TicketSummary, WorkOrderStatus, RouteDecision } from "../../types/workbench";
+import {
+  WORK_ORDER_STATUS_MAP,
+  RISK_LEVEL_MAP,
+  PRIORITY_MAP,
+  ROUTE_DECISION_MAP,
+  DEFAULT_OPERATOR_ID,
+} from "../../constants/workbench";
+
+const statusOptions: { label: string; value: WorkOrderStatus }[] = [
+  { label: "待处理", value: "PENDING" },
+  { label: "已分配", value: "ASSIGNED" },
+  { label: "处理中", value: "PROCESSING" },
+  { label: "已通过", value: "APPROVED" },
+  { label: "已驳回", value: "REJECTED" },
+  { label: "已解决", value: "RESOLVED" },
+  { label: "已关闭", value: "CLOSED" },
+  { label: "已升级", value: "ESCALATED" },
+];
+
+const routeOptions: { label: string; value: RouteDecision }[] = [
+  { label: "自动回复", value: "AUTO_REPLY" },
+  { label: "自动执行", value: "AUTO_EXECUTE" },
+  { label: "确认后执行", value: "CONFIRM_BEFORE_EXECUTE" },
+  { label: "人工审核", value: "HUMAN_REVIEW" },
+  { label: "人工接管", value: "HUMAN_TAKEOVER" },
+  { label: "拒绝", value: "REJECT" },
+];
+
+const TicketList: React.FC = () => {
+  const actionRef = useRef<ActionType>();
+  const navigate = useNavigate();
+
+  const handleClaim = async (record: TicketSummary) => {
+    try {
+      await claimTicket(record.ticketId, {
+        operatorId: DEFAULT_OPERATOR_ID,
+        comment: "领取工单",
+      });
+      message.success("领取成功");
+      actionRef.current?.reload();
+    } catch (err) {
+      message.error((err as Error).message || "领取失败");
+    }
+  };
+
+  const columns: ProColumns<TicketSummary>[] = [
+    {
+      title: "工单ID",
+      dataIndex: "ticketId",
+      ellipsis: true,
+      width: 180,
+      copyable: true,
+      search: false,
+    },
+    {
+      title: "用户ID",
+      dataIndex: "userId",
+      width: 120,
+      search: false,
+    },
+    {
+      title: "意图",
+      dataIndex: "intent",
+      ellipsis: true,
+      width: 140,
+      search: false,
+    },
+    {
+      title: "风险等级",
+      dataIndex: "riskLevel",
+      width: 90,
+      search: false,
+      render: (_, record) => {
+        const cfg = RISK_LEVEL_MAP[record.riskLevel];
+        return <Tag color={cfg?.color}>{cfg?.text || record.riskLevel}</Tag>;
+      },
+    },
+    {
+      title: "路由决策",
+      dataIndex: "routeDecision",
+      width: 120,
+      valueType: "select",
+      fieldProps: { options: routeOptions },
+      render: (_, record) =>
+        ROUTE_DECISION_MAP[record.routeDecision] || record.routeDecision,
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      width: 100,
+      valueType: "select",
+      fieldProps: { options: statusOptions },
+      render: (_, record) => {
+        const cfg = WORK_ORDER_STATUS_MAP[record.status];
+        return <Tag color={cfg?.color}>{cfg?.text || record.status}</Tag>;
+      },
+    },
+    {
+      title: "优先级",
+      dataIndex: "priority",
+      width: 80,
+      search: false,
+      render: (_, record) => {
+        const cfg = PRIORITY_MAP[record.priority];
+        return <Tag color={cfg?.color}>{cfg?.text || record.priority}</Tag>;
+      },
+    },
+    {
+      title: "坐席",
+      dataIndex: "assignedAgent",
+      width: 100,
+      search: false,
+      render: (_, record) => record.assignedAgent || "-",
+    },
+    {
+      title: "关键词",
+      dataIndex: "keyword",
+      hideInTable: true,
+      fieldProps: { placeholder: "搜索 ticketId / userId / 意图" },
+    },
+    {
+      title: "创建时间",
+      dataIndex: "createdAt",
+      width: 170,
+      search: false,
+      render: (_, record) =>
+        record.createdAt ? dayjs(record.createdAt).format("YYYY-MM-DD HH:mm:ss") : "-",
+    },
+    {
+      title: "操作",
+      valueType: "option",
+      width: 150,
+      fixed: "right",
+      render: (_, record) => (
+        <Space size="small">
+          <Button
+            type="link"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => navigate(`/tickets/${record.ticketId}`)}
+          >
+            详情
+          </Button>
+          {record.status === "PENDING" && (
+            <Button type="link" size="small" onClick={() => handleClaim(record)}>
+              领取
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <ProTable<TicketSummary>
+      headerTitle="工单列表"
+      actionRef={actionRef}
+      rowKey="ticketId"
+      columns={columns}
+      request={async (params) => {
+        try {
+          const { current, pageSize, ...rest } = params;
+          const result = await fetchTickets({
+            pageNo: current,
+            pageSize,
+            status: rest.status as WorkOrderStatus | undefined,
+            routeDecision: rest.routeDecision as RouteDecision | undefined,
+            keyword: rest.keyword as string | undefined,
+          });
+          return {
+            data: result.records,
+            total: result.total,
+            success: true,
+          };
+        } catch (err) {
+          message.error((err as Error).message || "查询失败");
+          return { data: [], total: 0, success: false };
+        }
+      }}
+      pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+      search={{ labelWidth: "auto", collapsed: false }}
+      scroll={{ x: 1200 }}
+      dateFormatter="string"
+    />
+  );
+};
+
+export default TicketList;
