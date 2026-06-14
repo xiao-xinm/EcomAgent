@@ -38,6 +38,8 @@ public class MockAgentOrchestrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(MockAgentOrchestrator.class);
 
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(\\d+(?:\\.\\d{1,2})?)\\s*(元|块|rmb|RMB)?");
+    private static final Pattern ORDER_NO_PATTERN =
+            Pattern.compile("(?i)(?:订单号|订单|order)\\s*[#：:=-]?\\s*([A-Z0-9][A-Z0-9-]{5,})");
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -833,6 +835,7 @@ public class MockAgentOrchestrator {
         if (requestMetadata != null && !requestMetadata.isEmpty()) {
             context.put("requestMetadata", requestMetadata);
         }
+        Map<String, Object> parameters = buildSkillParameters(intentGuess.intent(), content);
         return new SkillExecutionRequest(
                 traceId,
                 sessionId,
@@ -842,8 +845,25 @@ public class MockAgentOrchestrator {
                 skillConfig.skillId(),
                 decision.riskLevel(),
                 decision.routeDecision(),
-                Map.of(),
+                parameters,
                 context);
+    }
+
+    private Map<String, Object> buildSkillParameters(String intent, String content) {
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        // 当前只提取稳定、低风险的订单号；地址、退款原因等复杂槽位后续由专门 NLU/表单补齐。
+        if ("order.query".equals(intent) || "order.modify_address".equals(intent)) {
+            String orderNo = extractOrderNo(content);
+            if (orderNo != null && !orderNo.isBlank()) {
+                parameters.put("orderNo", orderNo);
+            }
+        }
+        return parameters;
+    }
+
+    private String extractOrderNo(String content) {
+        Matcher matcher = ORDER_NO_PATTERN.matcher(content == null ? "" : content);
+        return matcher.find() ? matcher.group(1) : "";
     }
 
     private void insertSkillExecutionLog(
@@ -986,7 +1006,8 @@ public class MockAgentOrchestrator {
     }
 
     private boolean hasHighAmount(String content) {
-        Matcher matcher = AMOUNT_PATTERN.matcher(content == null ? "" : content);
+        String amountText = ORDER_NO_PATTERN.matcher(content == null ? "" : content).replaceAll(" ");
+        Matcher matcher = AMOUNT_PATTERN.matcher(amountText);
         while (matcher.find()) {
             try {
                 BigDecimal amount = new BigDecimal(matcher.group(1));
