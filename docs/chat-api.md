@@ -95,6 +95,50 @@ interface ChatActionRequest {
 }
 ```
 
+修改地址确认示例：
+
+当 `currentIntent = order.modify_address` 时，前端需要在确认动作的 `payload` 中传入订单号和新地址。当前后端不会从第一次自然语言消息中保存完整地址字段，所以确认动作必须带完整 payload。
+
+```json
+{
+  "sessionId": "s_xxx",
+  "userId": "u1001",
+  "channel": "h5",
+  "actionId": "confirm",
+  "actionType": "CONFIRM",
+  "content": "确认修改地址",
+  "payload": {
+    "orderNo": "E2E-ORDER-1002",
+    "newAddress": {
+      "consigneeName": "测试用户A",
+      "consigneePhone": "13800008888",
+      "province": "上海市",
+      "city": "上海市",
+      "district": "浦东新区",
+      "addressDetail": "联调路 8888 号",
+      "postalCode": "200120"
+    },
+    "changeReason": "user confirmed address change"
+  }
+}
+```
+
+字段说明：
+
+- `orderNo`：订单号。也兼容 `order_no`；如后续前端拿到内部订单 ID，也可以传 `orderId` / `order_id`。
+- `newAddress.consigneeName`：收货人姓名，必填。
+- `newAddress.consigneePhone`：收货人手机号，必填。
+- `newAddress.province`：省份，必填。
+- `newAddress.city`：城市，必填。
+- `newAddress.district`：区县，必填。
+- `newAddress.addressDetail`：详细地址，必填。
+- `newAddress.postalCode`：邮编，选填。
+- `changeReason`：地址变更原因，选填。
+
+修改地址成功时，响应 `data.routeDecision = AUTO_EXECUTE`，`data.content` 会返回类似“已为订单 E2E-ORDER-1002 修改收货地址。”，`data.metadata` 中会包含 `skillExecutionId` 和 `skillExecutionStatus`。
+
+如果地址字段不完整，Skill Engine 会返回 `missingFields`，Agent 回复会提示“请补充完整的新收货地址后再确认。”；如果订单不允许自动改地址，会返回 `requiresHuman = true`，当前最小闭环会提示转人工处理，后续再接入自动创建人工工单。
+
 取消示例：
 
 ```json
@@ -234,7 +278,7 @@ Invoke-RestMethod `
 
 ```powershell
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$body = '{"userId":"u1001","channel":"h5","content":"我的订单已经发货了，想修改地址"}'
+$body = '{"userId":"u1001","channel":"h5","content":"修改收货地址，订单号 E2E-ORDER-1002"}'
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 
 $reply = Invoke-RestMethod `
@@ -253,11 +297,33 @@ routeDecision = CONFIRM_BEFORE_EXECUTE
 quickActions  = 确认继续 / 取消
 ```
 
-再用返回的 `sessionId` 确认继续：
+再用返回的 `sessionId` 携带新地址确认继续：
 
 ```powershell
 $sessionId = $reply.data.sessionId
-$body = "{`"sessionId`":`"$sessionId`",`"userId`":`"u1001`",`"channel`":`"h5`",`"actionId`":`"confirm`",`"actionType`":`"CONFIRM`",`"content`":`"确认继续`"}"
+$body = @"
+{
+  "sessionId": "$sessionId",
+  "userId": "u1001",
+  "channel": "h5",
+  "actionId": "confirm",
+  "actionType": "CONFIRM",
+  "content": "确认修改地址",
+  "payload": {
+    "orderNo": "E2E-ORDER-1002",
+    "newAddress": {
+      "consigneeName": "测试用户A",
+      "consigneePhone": "13800008888",
+      "province": "上海市",
+      "city": "上海市",
+      "district": "浦东新区",
+      "addressDetail": "联调路 8888 号",
+      "postalCode": "200120"
+    },
+    "changeReason": "manual test"
+  }
+}
+"@
 $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
 
 Invoke-RestMethod `
