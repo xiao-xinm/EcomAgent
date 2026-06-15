@@ -568,6 +568,13 @@ public class MockAgentOrchestrator {
         if ("order.modify_address".equals(intentGuess.intent()) && containsAny(content, "发货", "出库", "物流")) {
             return fromRule(findRule(rules, "R007_SHIPPED_ADDRESS_CONFIRM"), "履约中订单修改地址需要用户确认");
         }
+        if ("order.modify_address".equals(intentGuess.intent())) {
+            return new RuleDecision(
+                    RiskLevel.L2,
+                    RouteDecision.CONFIRM_BEFORE_EXECUTE,
+                    "ADDRESS_MODIFY_CONFIRM",
+                    "修改收货地址需要用户确认后执行");
+        }
 
         if (skillConfig == null) {
             return new RuleDecision(RiskLevel.L3, RouteDecision.HUMAN_TAKEOVER, "NO_SKILL", "未找到可用技能");
