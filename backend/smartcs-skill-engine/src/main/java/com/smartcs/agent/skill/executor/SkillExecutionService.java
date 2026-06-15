@@ -298,18 +298,14 @@ public class SkillExecutionService {
         if ("order.query".equals(skill.intent())) {
             return buildOrderQueryResponse(skill, request, status);
         }
+        if ("order.modify_address".equals(skill.intent())) {
+            return buildModifyAddressResponse(skill, request, status);
+        }
 
         response.put("mock", true);
         response.put("skillId", skill.skillId());
         response.put("intent", skill.intent());
         response.put("status", status);
-
-        if ("order.modify_address".equals(skill.intent())) {
-            response.put("orderId", textFrom(request.parameters(), "order_id", "orderId", "mock-order"));
-            response.put("modifyRequestId", "addr_" + UUID.randomUUID());
-            response.put("summary", "已记录改地址请求，真实电商订单 API 后续接入。");
-            return response;
-        }
 
         response.put("reviewRequired", "REVIEW_REQUIRED".equals(status));
         response.put("summary", "该技能已进入人工审核或人工兜底流程。");
@@ -362,6 +358,120 @@ public class SkillExecutionService {
             response.put("fallbackReason", "ORDER_DOMAIN_QUERY_FAILED");
             return response;
         }
+    }
+
+    private Map<String, Object> buildModifyAddressResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        if (!"SUCCEEDED".equals(status)) {
+            return mockModifyAddressResponse(skill, request, status);
+        }
+
+        try {
+            Map<String, Object> response = baseSkillResponse(skill, status);
+            response.put("mock", false);
+            response.put("source", "ecom_order");
+
+            OrderSnapshot order = findOrderForQuery(request);
+            response.put("found", order != null);
+            if (order == null) {
+                response.put("applied", false);
+                response.put("summary", "暂未查询到可修改地址的订单，请补充订单号或联系人工客服。");
+                return response;
+            }
+
+            response.put("orderId", order.orderId());
+            response.put("orderNo", order.orderNo());
+            response.put("canModifyAddress", order.canModifyAddress());
+            if (!canApplyAddressModify(order)) {
+                response.put("applied", false);
+                response.put("requiresHuman", true);
+                response.put("summary", "当前订单状态不支持自动修改地址，请转人工处理。");
+                return response;
+            }
+
+            AddressPayload address = readAddressPayload(request.parameters());
+            List<String> missingFields = missingAddressFields(address);
+            if (!missingFields.isEmpty()) {
+                response.put("applied", false);
+                response.put("missingFields", missingFields);
+                response.put("summary", "请补充完整的新收货地址后再确认。");
+                return response;
+            }
+
+            String addressId = "addr_" + UUID.randomUUID();
+            applyAddressModify(order, address, addressId, request.messageId());
+            response.put("applied", true);
+            response.put("modifyRequestId", addressId);
+            response.put("newAddress", addressResponse(address));
+            response.put("summary", "已为订单 " + order.orderNo() + " 修改收货地址。");
+            return response;
+        } catch (DataAccessException exception) {
+            LOGGER.warn(
+                    "修改电商订单地址失败，回退到mock响应 traceId={} sessionId={} userId={}",
+                    request.traceId(),
+                    request.sessionId(),
+                    request.userId(),
+                    exception);
+            Map<String, Object> response = mockModifyAddressResponse(skill, request, status);
+            response.put("fallbackReason", "ORDER_ADDRESS_MODIFY_FAILED");
+            return response;
+        }
+    }
+
+    private boolean canApplyAddressModify(OrderSnapshot order) {
+        return order.canModifyAddress()
+                && List.of("CREATED", "PAID", "PACKING").contains(order.orderStatus())
+                && List.of("NONE", "WAITING_SHIP").contains(order.logisticsStatus());
+    }
+
+    private void applyAddressModify(
+            OrderSnapshot order,
+            AddressPayload address,
+            String addressId,
+            String messageId) {
+        jdbcTemplate.update(
+                """
+                UPDATE ecom_order
+                SET consignee_name = ?,
+                    consignee_phone = ?,
+                    province = ?,
+                    city = ?,
+                    district = ?,
+                    address_detail = ?
+                WHERE order_id = ?
+                """,
+                address.consigneeName(),
+                address.consigneePhone(),
+                address.province(),
+                address.city(),
+                address.district(),
+                address.addressDetail(),
+                order.orderId());
+        jdbcTemplate.update(
+                "UPDATE ecom_order_address SET is_current = 0 WHERE order_id = ? AND is_current = 1",
+                order.orderId());
+        jdbcTemplate.update(
+                """
+                INSERT INTO ecom_order_address (
+                    address_id, order_id, user_id, consignee_name, consignee_phone,
+                    province, city, district, address_detail, postal_code, is_current,
+                    source, source_message_id, change_reason, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'AGENT_MODIFY', ?, ?, 'skill-engine')
+                """,
+                addressId,
+                order.orderId(),
+                order.userId(),
+                address.consigneeName(),
+                address.consigneePhone(),
+                address.province(),
+                address.city(),
+                address.district(),
+                address.addressDetail(),
+                address.postalCode(),
+                hasText(messageId) ? messageId : null,
+                textOr(address.changeReason(), "USER_CONFIRMED_ADDRESS_MODIFY"));
     }
 
     private OrderSnapshot findOrderForQuery(SkillExecuteRequest request) {
@@ -461,6 +571,66 @@ public class SkillExecutionService {
         response.put("orderStatus", "SHIPPED");
         response.put("logisticsStatus", "IN_TRANSIT");
         response.put("summary", "已为你查到最近订单，当前订单已发货，物流运输中。");
+        return response;
+    }
+
+    private Map<String, Object> mockModifyAddressResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        Map<String, Object> response = baseSkillResponse(skill, status);
+        response.put("mock", true);
+        response.put("orderId", textFrom(request.parameters(), "order_id", "orderId", "mock-order"));
+        response.put("orderNo", firstText(request.parameters(), "order_no", "orderNo"));
+        response.put("modifyRequestId", "addr_" + UUID.randomUUID());
+        response.put("summary", "已记录改地址请求，真实电商订单 API 后续接入。");
+        return response;
+    }
+
+    private AddressPayload readAddressPayload(Map<String, Object> values) {
+        return new AddressPayload(
+                firstAddressText(values, "consignee_name", "consigneeName", "name"),
+                firstAddressText(values, "consignee_phone", "consigneePhone", "phone"),
+                firstAddressText(values, "province"),
+                firstAddressText(values, "city"),
+                firstAddressText(values, "district"),
+                firstAddressText(values, "address_detail", "addressDetail", "detail"),
+                firstAddressText(values, "postal_code", "postalCode"),
+                firstAddressText(values, "change_reason", "changeReason", "reason"));
+    }
+
+    private List<String> missingAddressFields(AddressPayload address) {
+        List<String> missingFields = new ArrayList<>();
+        if (!hasText(address.consigneeName())) {
+            missingFields.add("consigneeName");
+        }
+        if (!hasText(address.consigneePhone())) {
+            missingFields.add("consigneePhone");
+        }
+        if (!hasText(address.province())) {
+            missingFields.add("province");
+        }
+        if (!hasText(address.city())) {
+            missingFields.add("city");
+        }
+        if (!hasText(address.district())) {
+            missingFields.add("district");
+        }
+        if (!hasText(address.addressDetail())) {
+            missingFields.add("addressDetail");
+        }
+        return missingFields;
+    }
+
+    private Map<String, Object> addressResponse(AddressPayload address) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("consigneeName", address.consigneeName());
+        response.put("consigneePhone", address.consigneePhone());
+        response.put("province", address.province());
+        response.put("city", address.city());
+        response.put("district", address.district());
+        response.put("addressDetail", address.addressDetail());
+        response.put("postalCode", address.postalCode());
         return response;
     }
 
@@ -609,6 +779,25 @@ public class SkillExecutionService {
         return "";
     }
 
+    private String firstAddressText(Map<String, Object> values, String... keys) {
+        if (values == null) {
+            return "";
+        }
+        Object nested = values.get("newAddress");
+        if (!(nested instanceof Map<?, ?>)) {
+            nested = values.get("address");
+        }
+        if (nested instanceof Map<?, ?> nestedValues) {
+            for (String key : keys) {
+                Object value = nestedValues.get(key);
+                if (value != null && !value.toString().isBlank()) {
+                    return value.toString();
+                }
+            }
+        }
+        return firstText(values, keys);
+    }
+
     private String textOr(String value, String fallback) {
         return hasText(value) ? value : fallback;
     }
@@ -646,4 +835,14 @@ public class SkillExecutionService {
             BigDecimal unitPrice,
             BigDecimal totalAmount,
             String afterSaleStatus) {}
+
+    private record AddressPayload(
+            String consigneeName,
+            String consigneePhone,
+            String province,
+            String city,
+            String district,
+            String addressDetail,
+            String postalCode,
+            String changeReason) {}
 }
