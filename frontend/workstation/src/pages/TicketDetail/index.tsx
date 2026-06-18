@@ -161,7 +161,8 @@ const TicketDetailPage: React.FC = () => {
     !isTerminalTicket &&
     (approval.status === "PENDING" || approval.status === "CLAIMED");
   const canStartTakeover =
-    !isTerminalTicket && (!takeover || takeover.status === "CANCELLED");
+    !isTerminalTicket &&
+    (!takeover || ["REQUESTED", "QUEUED", "ASSIGNED"].includes(takeover.status));
   const canFinishTakeover =
     !isTerminalTicket && takeover && takeover.status === "IN_PROGRESS";
 
