@@ -87,7 +87,7 @@ const TicketDetailPage: React.FC = () => {
         comment: comment || "领取工单",
       });
       message.success("领取成功");
-      loadDetail();
+      await loadDetail();
     });
 
   const handleApprove = () =>
@@ -97,7 +97,7 @@ const TicketDetailPage: React.FC = () => {
         comment: comment || "审批通过",
       });
       message.success("审批通过");
-      loadDetail();
+      await loadDetail();
     });
 
   const handleReject = () =>
@@ -107,7 +107,7 @@ const TicketDetailPage: React.FC = () => {
         comment: comment || "审批驳回",
       });
       message.success("已驳回");
-      loadDetail();
+      await loadDetail();
     });
 
   const handleStartTakeover = () =>
@@ -117,7 +117,7 @@ const TicketDetailPage: React.FC = () => {
         comment: comment || "开始人工接管",
       });
       message.success("已开始接管");
-      loadDetail();
+      await loadDetail();
     });
 
   const handleFinishTakeover = () =>
@@ -128,7 +128,7 @@ const TicketDetailPage: React.FC = () => {
         resolutionStatus: "RESOLVED",
       });
       message.success("已结束接管");
-      loadDetail();
+      await loadDetail();
     });
 
   if (loading) {

@@ -7,6 +7,7 @@ import { ERROR_CODES } from '@/types/api'
 
 const SESSION_STORAGE_KEY = 'smartcs_session_id'
 const DEFAULT_USER_ID = import.meta.env.VITE_USER_ID || 'u1001'
+const POLLING_INTERVAL_MS = Number(import.meta.env.VITE_CHAT_POLLING_INTERVAL_MS || 3000)
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -34,15 +35,26 @@ function toFrontendRole(role: string): 'user' | 'agent' | 'system' {
   }
 }
 
-function toChatMessage(view: ChatMessageView): ChatMessage {
+function normalizeQuickActions(actions: unknown[] | null | undefined): QuickAction[] | undefined {
+  if (!Array.isArray(actions)) return undefined
+
+  const quickActions = actions.filter((action): action is QuickAction => {
+    if (!action || typeof action !== 'object') return false
+    const candidate = action as Partial<QuickAction>
+    return typeof candidate.label === 'string' && typeof candidate.value === 'string'
+  })
+  return quickActions.length ? quickActions : undefined
+}
+
+function toChatMessage(view: ChatMessageView, existing?: ChatMessage): ChatMessage {
   return {
     id: view.messageId,
     role: toFrontendRole(view.role),
     content: view.content || '',
     timestamp: new Date(view.createdAt).getTime(),
     status: 'sent',
-    // Historical quickActions are not interactive — only live replies support click
-    quickActions: undefined,
+    // 远端刷新时保留已展示的快捷动作，避免轮询把“确认/取消”按钮刷没。
+    quickActions: existing?.quickActions || normalizeQuickActions(view.quickActions),
     agentReplyId: view.role !== 'USER' ? view.messageId : undefined,
   }
 }
@@ -52,7 +64,10 @@ export const useChatStore = defineStore('chat', () => {
   const sessionId = ref(loadSessionId())
   const userId = ref(DEFAULT_USER_ID)
   const loading = ref(false)
+  const syncing = ref(false)
   const error = ref<string | null>(null)
+  let pollingTimer: number | undefined
+  let visibilityListenerBound = false
 
   const lastAgentMessage = computed(() =>
     [...messages.value].reverse().find((m) => m.role === 'agent'),
@@ -66,6 +81,83 @@ export const useChatStore = defineStore('chat', () => {
     const idx = messages.value.findIndex((m) => m.id === id)
     if (idx !== -1) {
       messages.value[idx] = { ...messages.value[idx], ...patch }
+    }
+  }
+
+  function mergeRemoteMessages(remoteMessages: ChatMessage[]) {
+    const remoteIds = new Set(remoteMessages.map((m) => m.id))
+    const pendingLocalMessages = messages.value.filter(
+      (msg) => msg.status !== 'sent' && !remoteIds.has(msg.id),
+    )
+    messages.value = [...remoteMessages, ...pendingLocalMessages].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    )
+  }
+
+  async function syncMessages(
+    options: { silent?: boolean; force?: boolean; suppressError?: boolean } = {},
+  ): Promise<boolean> {
+    if (syncing.value) return false
+    if (loading.value && !options.force) return false
+
+    syncing.value = true
+    if (!options.silent) {
+      loading.value = true
+      error.value = null
+    }
+
+    try {
+      const response = await getSessionMessages(sessionId.value)
+      if (response.code === ERROR_CODES.SUCCESS && response.data) {
+        const byMessageId = new Map(messages.value.map((msg) => [msg.id, msg]))
+        const byReplyId = new Map(
+          messages.value
+            .filter((msg) => msg.agentReplyId)
+            .map((msg) => [msg.agentReplyId as string, msg]),
+        )
+        const remoteMessages = response.data.map((view) =>
+          toChatMessage(view, byMessageId.get(view.messageId) || byReplyId.get(view.messageId)),
+        )
+        mergeRemoteMessages(remoteMessages)
+        return remoteMessages.length > 0
+      }
+      return false
+    } catch (err) {
+      if (!options.silent && !options.suppressError) {
+        error.value = err instanceof Error ? err.message : '消息同步失败'
+      }
+      return false
+    } finally {
+      syncing.value = false
+      if (!options.silent) {
+        loading.value = false
+      }
+    }
+  }
+
+  function syncWhenVisible() {
+    if (document.visibilityState === 'visible') {
+      void syncMessages({ silent: true })
+    }
+  }
+
+  function startPolling() {
+    if (pollingTimer) return
+    pollingTimer = window.setInterval(syncWhenVisible, POLLING_INTERVAL_MS)
+    if (!visibilityListenerBound) {
+      document.addEventListener('visibilitychange', syncWhenVisible)
+      visibilityListenerBound = true
+    }
+  }
+
+  function stopPolling() {
+    if (pollingTimer) {
+      window.clearInterval(pollingTimer)
+      pollingTimer = undefined
+    }
+    if (visibilityListenerBound) {
+      document.removeEventListener('visibilitychange', syncWhenVisible)
+      visibilityListenerBound = false
     }
   }
 
@@ -116,6 +208,7 @@ export const useChatStore = defineStore('chat', () => {
           agentReplyId: reply.replyId,
         }
         addMessage(agentMsg)
+        await syncMessages({ silent: true, force: true })
       } else {
         const agentMsg: ChatMessage = {
           id: generateId(),
@@ -191,6 +284,7 @@ export const useChatStore = defineStore('chat', () => {
           agentReplyId: reply.replyId,
         }
         addMessage(agentMsg)
+        await syncMessages({ silent: true, force: true })
       } else {
         const agentMsg: ChatMessage = {
           id: generateId(),
@@ -211,21 +305,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function loadHistory(): Promise<boolean> {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await getSessionMessages(sessionId.value)
-      if (response.code === ERROR_CODES.SUCCESS && response.data?.length) {
-        messages.value = response.data.map(toChatMessage)
-        return true
-      }
-      return false
-    } catch {
-      // Session not found or network error — start fresh
-      return false
-    } finally {
-      loading.value = false
-    }
+    return syncMessages({ suppressError: true })
   }
 
   function resetSession() {
@@ -241,12 +321,16 @@ export const useChatStore = defineStore('chat', () => {
     sessionId,
     userId,
     loading,
+    syncing,
     error,
     lastAgentMessage,
     send,
     retry,
     handleAction,
     loadHistory,
+    syncMessages,
+    startPolling,
+    stopPolling,
     resetSession,
   }
 })

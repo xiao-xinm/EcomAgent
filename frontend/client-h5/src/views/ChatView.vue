@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import type { QuickAction } from '@/types/api'
 import MessageBubble from '@/components/MessageBubble.vue'
@@ -41,11 +41,17 @@ const WELCOME_MESSAGE = {
 }
 
 onMounted(async () => {
-  if (store.messages.length > 0) return
-  const hasHistory = await store.loadHistory()
-  if (!hasHistory) {
-    store.messages.push(WELCOME_MESSAGE)
+  if (store.messages.length === 0) {
+    const hasHistory = await store.loadHistory()
+    if (!hasHistory) {
+      store.messages.push(WELCOME_MESSAGE)
+    }
   }
+  store.startPolling()
+})
+
+onBeforeUnmount(() => {
+  store.stopPolling()
 })
 </script>
 
