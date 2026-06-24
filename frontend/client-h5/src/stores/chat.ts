@@ -46,13 +46,24 @@ function normalizeQuickActions(actions: unknown[] | null | undefined): QuickActi
   return quickActions.length ? quickActions : undefined
 }
 
+function metadataString(metadata: Record<string, unknown> | undefined, key: string): string | null {
+  const value = metadata?.[key]
+  return typeof value === 'string' && value ? value : null
+}
+
 function toChatMessage(view: ChatMessageView, existing?: ChatMessage): ChatMessage {
   return {
     id: view.messageId,
     role: toFrontendRole(view.role),
+    backendRole: view.role,
+    messageType: view.messageType,
     content: view.content || '',
     timestamp: new Date(view.createdAt).getTime(),
     status: 'sent',
+    intent: view.intent || metadataString(view.metadata, 'intent') || existing?.intent,
+    riskLevel: view.riskLevel || existing?.riskLevel,
+    routeDecision: view.routeDecision || existing?.routeDecision,
+    metadata: view.metadata || existing?.metadata || {},
     // 远端刷新时保留已展示的快捷动作，避免轮询把“确认/取消”按钮刷没。
     quickActions: existing?.quickActions || normalizeQuickActions(view.quickActions),
     agentReplyId: view.role !== 'USER' ? view.messageId : undefined,
@@ -170,9 +181,12 @@ export const useChatStore = defineStore('chat', () => {
     const userMsg: ChatMessage = {
       id: generateId(),
       role: 'user',
+      backendRole: 'USER',
+      messageType: 'TEXT',
       content: trimmed,
       timestamp: Date.now(),
       status: 'sending',
+      metadata: { channel: 'h5' },
     }
     addMessage(userMsg)
     loading.value = true
@@ -201,9 +215,15 @@ export const useChatStore = defineStore('chat', () => {
         const agentMsg: ChatMessage = {
           id: generateId(),
           role: 'agent',
+          backendRole: 'AGENT',
+          messageType: reply.messageType,
           content: reply.content || '',
           timestamp: new Date(reply.createdAt).getTime(),
           status: 'sent',
+          intent: metadataString(reply.metadata, 'intent'),
+          riskLevel: reply.riskLevel,
+          routeDecision: reply.routeDecision,
+          metadata: reply.metadata || {},
           quickActions: reply.quickActions,
           agentReplyId: reply.replyId,
         }
@@ -213,9 +233,12 @@ export const useChatStore = defineStore('chat', () => {
         const agentMsg: ChatMessage = {
           id: generateId(),
           role: 'agent',
+          backendRole: 'AGENT',
+          messageType: 'TEXT',
           content: response.message || '服务暂时不可用，请稍后重试',
           timestamp: Date.now(),
           status: 'sent',
+          metadata: {},
         }
         addMessage(agentMsg)
         error.value = response.message
@@ -237,7 +260,10 @@ export const useChatStore = defineStore('chat', () => {
     await send(msg.retryPayload.content)
   }
 
-  async function handleAction(action: QuickAction) {
+  async function handleAction(
+    action: QuickAction,
+    options: { content?: string; payload?: Record<string, unknown> } = {},
+  ) {
     if (loading.value) return
 
     error.value = null
@@ -246,9 +272,12 @@ export const useChatStore = defineStore('chat', () => {
     const userMsg: ChatMessage = {
       id: generateId(),
       role: 'user',
-      content: action.label,
+      backendRole: 'USER',
+      messageType: 'ACTION',
+      content: options.content || action.label,
       timestamp: Date.now(),
       status: 'sending',
+      metadata: { actionId: action.value, actionType: action.actionType || action.value },
     }
     addMessage(userMsg)
     loading.value = true
@@ -260,8 +289,8 @@ export const useChatStore = defineStore('chat', () => {
         channel: 'h5',
         actionId: action.value,
         actionType: action.actionType || action.value,
-        content: action.label,
-        payload: action.payload,
+        content: options.content || action.label,
+        payload: options.payload || action.payload,
       })
 
       updateMessage(userMsg.id, { status: 'sent' })
@@ -277,9 +306,15 @@ export const useChatStore = defineStore('chat', () => {
         const agentMsg: ChatMessage = {
           id: generateId(),
           role: 'agent',
+          backendRole: 'AGENT',
+          messageType: reply.messageType,
           content: reply.content || '',
           timestamp: new Date(reply.createdAt).getTime(),
           status: 'sent',
+          intent: metadataString(reply.metadata, 'intent'),
+          riskLevel: reply.riskLevel,
+          routeDecision: reply.routeDecision,
+          metadata: reply.metadata || {},
           quickActions: reply.quickActions,
           agentReplyId: reply.replyId,
         }
@@ -289,9 +324,12 @@ export const useChatStore = defineStore('chat', () => {
         const agentMsg: ChatMessage = {
           id: generateId(),
           role: 'agent',
+          backendRole: 'AGENT',
+          messageType: 'TEXT',
           content: response.message || '操作失败，请稍后重试',
           timestamp: Date.now(),
           status: 'sent',
+          metadata: {},
         }
         addMessage(agentMsg)
         error.value = response.message

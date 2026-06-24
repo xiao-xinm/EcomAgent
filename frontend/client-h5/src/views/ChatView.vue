@@ -1,13 +1,52 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, nextTick, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import type { QuickAction } from '@/types/api'
+import type { ChatMessage } from '@/types/chat'
+import {
+  buildAddressConfirmPayload,
+  extractOrderNoFromText,
+  isConfirmAction,
+  isModifyAddressIntent,
+  type AddressConfirmForm,
+} from '@/utils/addressConfirm'
+import AddressConfirmSheet from '@/components/AddressConfirmSheet.vue'
 import MessageBubble from '@/components/MessageBubble.vue'
 import InputBar from '@/components/InputBar.vue'
+import SessionStatusBar from '@/components/SessionStatusBar.vue'
 import TypingIndicator from '@/components/TypingIndicator.vue'
 
 const store = useChatStore()
 const messageListRef = ref<HTMLElement | null>(null)
+const pendingAddressAction = ref<{ action: QuickAction; message: ChatMessage } | null>(null)
+
+const latestStatusMessage = computed(() =>
+  [...store.messages]
+    .reverse()
+    .find((message) => message.id !== 'welcome' && message.role !== 'user'),
+)
+
+const initialAddressOrderNo = computed(() => {
+  const pending = pendingAddressAction.value
+  if (!pending) return ''
+
+  const actionOrderNo = pending.action.payload?.orderNo
+  if (typeof actionOrderNo === 'string') return actionOrderNo
+
+  const metadataOrderNo = pending.message.metadata?.orderNo
+  if (typeof metadataOrderNo === 'string') return metadataOrderNo
+
+  const latestUserMessage = [...store.messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === 'user' &&
+        message.status === 'sent' &&
+        message.timestamp <= pending.message.timestamp,
+    )
+
+  return extractOrderNoFromText(latestUserMessage?.content)
+})
 
 function scrollToBottom() {
   nextTick(() => {
@@ -24,12 +63,32 @@ function handleSend(content: string) {
   store.send(content)
 }
 
-function handleQuickAction(action: QuickAction) {
+function handleQuickAction(action: QuickAction, message: ChatMessage) {
+  if (
+    isConfirmAction(action) &&
+    message.routeDecision === 'CONFIRM_BEFORE_EXECUTE' &&
+    isModifyAddressIntent(message.intent)
+  ) {
+    pendingAddressAction.value = { action, message }
+    return
+  }
+
   store.handleAction(action)
 }
 
 function handleRetry(messageId: string) {
   store.retry(messageId)
+}
+
+async function handleAddressConfirmSubmit(form: AddressConfirmForm) {
+  const pending = pendingAddressAction.value
+  if (!pending) return
+
+  await store.handleAction(pending.action, {
+    content: '确认修改地址',
+    payload: buildAddressConfirmPayload(form) as unknown as Record<string, unknown>,
+  })
+  pendingAddressAction.value = null
 }
 
 const WELCOME_MESSAGE = {
@@ -64,6 +123,12 @@ onBeforeUnmount(() => {
       </h1>
     </header>
 
+    <SessionStatusBar
+      :loading="store.loading"
+      :syncing="store.syncing"
+      :last-message="latestStatusMessage"
+    />
+
     <!-- Message list -->
     <div
       ref="messageListRef"
@@ -92,6 +157,14 @@ onBeforeUnmount(() => {
     <InputBar
       :disabled="store.loading"
       @send="handleSend"
+    />
+
+    <AddressConfirmSheet
+      :open="Boolean(pendingAddressAction)"
+      :initial-order-no="initialAddressOrderNo"
+      :submitting="store.loading"
+      @close="pendingAddressAction = null"
+      @submit="handleAddressConfirmSubmit"
     />
   </div>
 </template>

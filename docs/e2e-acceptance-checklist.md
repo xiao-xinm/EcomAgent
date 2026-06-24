@@ -61,10 +61,12 @@ npm run dev:workstation
 
 - 用户端收到确认类回复
 - 路由决策为 `CONFIRM_BEFORE_EXECUTE`
-- 用户点击确认后，前端调用 `POST /api/chat/actions`
-- 成功后回复中包含技能执行结果
+- 用户点击“确认继续”后，H5 打开地址确认表单
+- 用户填写订单号、收货人、手机号、省市区、详细地址等字段后提交
+- 前端调用 `POST /api/chat/actions`，并按 `orderNo + newAddress + changeReason` 结构传入 `payload`
+- 成功后回复中包含技能执行结果和 `skillExecutionId`
 
-如果前端暂未提供完整地址表单，可先用 Postman 按 `docs/chat-api.md` 中的确认动作示例传完整 `payload`。
+如果页面提交失败，可用 Postman 按 `docs/chat-api.md` 中的确认动作示例排查完整 `payload`。
 
 ## 4. 退款人工审核
 
