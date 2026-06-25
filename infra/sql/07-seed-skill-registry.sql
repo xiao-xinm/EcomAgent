@@ -37,6 +37,21 @@ INSERT INTO `skill_registry` (
     '1.0.0'
 ),
 (
+    'logistics_query',
+    'Logistics Query',
+    'logistics.query',
+    'L0',
+    'SYNC',
+    1,
+    'ACTIVE',
+    'Query shipment carrier, tracking number, logistics status and latest logistics node.',
+    JSON_OBJECT('requires_authenticated_user', true),
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 500),
+    10000,
+    'smartcs',
+    '1.0.0'
+),
+(
     'order_modify_address',
     '修改收货地址',
     'order.modify_address',
@@ -118,6 +133,18 @@ INSERT INTO `skill_slot` (
     NULL,
     '^[A-Za-z0-9_-]{6,64}$',
     '请提供订单号，或者我可以尝试查询你的最近订单。',
+    NULL,
+    10
+),
+(
+    'logistics_query',
+    'order_id',
+    'ORDER_ID',
+    0,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[A-Za-z0-9_-]{6,64}$',
+    'Please provide the order number for logistics lookup, or I can try your latest order.',
     NULL,
     10
 ),
@@ -308,6 +335,30 @@ INSERT INTO `skill_api_step` (
     NULL,
     NULL,
     JSON_OBJECT('orderStatus', '$.status', 'logisticsStatus', '$.logistics.status', 'summary', '$.summary'),
+    1,
+    NULL,
+    NULL,
+    5000,
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 300)
+),
+(
+    'logistics_query',
+    1,
+    'Query Logistics',
+    'business.logistics.query',
+    'GET',
+    '/business-api/logistics/query',
+    JSON_OBJECT('orderId', 'slots.order_id', 'userId', 'session.user_id'),
+    NULL,
+    NULL,
+    JSON_OBJECT(
+        'logisticsStatus', '$.logistics.status',
+        'carrier', '$.logistics.carrier',
+        'trackingNo', '$.logistics.trackingNo',
+        'latestNode', '$.logistics.latestNode',
+        'estimatedDeliveryTime', '$.logistics.estimatedDeliveryTime',
+        'summary', '$.summary'
+    ),
     1,
     NULL,
     NULL,

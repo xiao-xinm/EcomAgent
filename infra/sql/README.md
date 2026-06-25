@@ -36,6 +36,7 @@
 当前最小技能种子见 `07-seed-skill-registry.sql`，包含：
 
 - `order.query`
+- `logistics.query`
 - `order.modify_address`
 - `refund.apply`
 - `exchange.apply`

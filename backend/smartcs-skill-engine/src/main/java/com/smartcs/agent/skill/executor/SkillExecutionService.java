@@ -298,6 +298,9 @@ public class SkillExecutionService {
         if ("order.query".equals(skill.intent())) {
             return buildOrderQueryResponse(skill, request, status);
         }
+        if ("logistics.query".equals(skill.intent())) {
+            return buildLogisticsQueryResponse(skill, request, status);
+        }
         if ("order.modify_address".equals(skill.intent())) {
             return buildModifyAddressResponse(skill, request, status);
         }
@@ -416,6 +419,49 @@ public class SkillExecutionService {
                     exception);
             Map<String, Object> response = mockModifyAddressResponse(skill, request, status);
             response.put("fallbackReason", "ORDER_ADDRESS_MODIFY_FAILED");
+            return response;
+        }
+    }
+
+    private Map<String, Object> buildLogisticsQueryResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        if (!"SUCCEEDED".equals(status)) {
+            return mockLogisticsQueryResponse(skill, request, status);
+        }
+
+        try {
+            Map<String, Object> response = baseSkillResponse(skill, status);
+            response.put("mock", false);
+            response.put("source", "ecom_order");
+
+            OrderSnapshot order = findOrderForQuery(request);
+            response.put("found", order != null);
+            if (order == null) {
+                response.put("summary", "暂未查询到订单物流信息，请补充订单号或联系人工客服。");
+                return response;
+            }
+
+            response.put("orderId", order.orderId());
+            response.put("orderNo", order.orderNo());
+            response.put("orderStatus", order.orderStatus());
+            response.put("logisticsStatus", order.logisticsStatus());
+            response.put("carrier", "顺丰速运");
+            response.put("trackingNo", trackingNo(order));
+            response.put("latestNode", logisticsNode(order.logisticsStatus()));
+            response.put("estimatedDeliveryTime", estimatedDeliveryTime(order.logisticsStatus()));
+            response.put("summary", logisticsQuerySummary(order));
+            return response;
+        } catch (DataAccessException exception) {
+            LOGGER.warn(
+                    "查询电商物流失败，回退到mock响应 traceId={} sessionId={} userId={}",
+                    request.traceId(),
+                    request.sessionId(),
+                    request.userId(),
+                    exception);
+            Map<String, Object> response = mockLogisticsQueryResponse(skill, request, status);
+            response.put("fallbackReason", "LOGISTICS_DOMAIN_QUERY_FAILED");
             return response;
         }
     }
@@ -561,6 +607,40 @@ public class SkillExecutionService {
                 + "。";
     }
 
+    private String logisticsQuerySummary(OrderSnapshot order) {
+        return "已查询到订单 " + order.orderNo()
+                + " 的物流信息：承运商顺丰速运，运单号 " + trackingNo(order)
+                + "，当前状态 " + order.logisticsStatus()
+                + "，最新节点：" + logisticsNode(order.logisticsStatus())
+                + "，预计送达：" + estimatedDeliveryTime(order.logisticsStatus()) + "。";
+    }
+
+    private String trackingNo(OrderSnapshot order) {
+        String normalized = order.orderNo() == null ? order.orderId() : order.orderNo().replaceAll("[^A-Za-z0-9]", "");
+        return "SF" + normalized;
+    }
+
+    private String logisticsNode(String logisticsStatus) {
+        return switch (textOr(logisticsStatus, "").toUpperCase()) {
+            case "NONE" -> "订单尚未进入物流履约";
+            case "WAITING_SHIP" -> "商家正在备货，等待仓库出库";
+            case "IN_TRANSIT" -> "包裹已离开发货仓，正在运输途中";
+            case "DELIVERING" -> "快递员正在派送";
+            case "SIGNED" -> "包裹已签收";
+            default -> "物流节点同步中";
+        };
+    }
+
+    private String estimatedDeliveryTime(String logisticsStatus) {
+        return switch (textOr(logisticsStatus, "").toUpperCase()) {
+            case "NONE", "WAITING_SHIP" -> "发货后 2-4 天";
+            case "IN_TRANSIT" -> "1-2 天内";
+            case "DELIVERING" -> "今天";
+            case "SIGNED" -> "已送达";
+            default -> "暂无法预估";
+        };
+    }
+
     private Map<String, Object> mockOrderQueryResponse(
             SkillDefinitionView skill,
             SkillExecuteRequest request,
@@ -571,6 +651,22 @@ public class SkillExecutionService {
         response.put("orderStatus", "SHIPPED");
         response.put("logisticsStatus", "IN_TRANSIT");
         response.put("summary", "已为你查到最近订单，当前订单已发货，物流运输中。");
+        return response;
+    }
+
+    private Map<String, Object> mockLogisticsQueryResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        Map<String, Object> response = baseSkillResponse(skill, status);
+        response.put("mock", true);
+        response.put("orderNo", firstText(request.parameters(), "order_no", "orderNo"));
+        response.put("carrier", "顺丰速运");
+        response.put("trackingNo", "SFMOCK1002001");
+        response.put("logisticsStatus", "IN_TRANSIT");
+        response.put("latestNode", "包裹已离开发货仓，正在运输途中");
+        response.put("estimatedDeliveryTime", "1-2 天内");
+        response.put("summary", "已为你查询到物流信息：包裹正在运输途中，预计 1-2 天内送达。");
         return response;
     }
 
@@ -670,13 +766,19 @@ public class SkillExecutionService {
 
     private String buildMessage(SkillDefinitionView skill, String status, RouteDecision routeDecision) {
         return switch (status) {
-            case "SUCCEEDED" -> "order.query".equals(skill.intent())
-                    ? "已完成订单查询。"
-                    : "已完成技能执行，真实业务 API 后续接入。";
+            case "SUCCEEDED" -> successMessage(skill.intent());
             case "REVIEW_REQUIRED" -> "该请求需要人工审核，Agent 不直接执行敏感操作。";
             case "PENDING" -> "该请求需要用户确认后再执行。";
             case "CANCELLED" -> "该技能本次未执行，路由决策为 " + routeDecision.name() + "。";
             default -> "技能执行状态：" + status;
+        };
+    }
+
+    private String successMessage(String intent) {
+        return switch (intent) {
+            case "order.query" -> "已完成订单查询。";
+            case "logistics.query" -> "已完成物流查询。";
+            default -> "已完成技能执行，真实业务 API 后续接入。";
         };
     }
 

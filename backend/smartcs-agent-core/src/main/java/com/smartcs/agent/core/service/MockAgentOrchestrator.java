@@ -557,7 +557,10 @@ public class MockAgentOrchestrator {
         if (containsAny(lower, "改地址", "修改地址", "换地址", "收货地址")) {
             return new IntentGuess("order.modify_address", 0.88);
         }
-        if (containsAny(lower, "订单", "物流", "快递", "到哪", "查询")) {
+        if (containsAny(lower, "物流", "快递", "运单", "包裹", "配送", "到哪")) {
+            return new IntentGuess("logistics.query", 0.87);
+        }
+        if (containsAny(lower, "订单", "查询")) {
             return new IntentGuess("order.query", 0.86);
         }
         return new IntentGuess("unknown", 0.40);
@@ -899,7 +902,7 @@ public class MockAgentOrchestrator {
     private Map<String, Object> buildSkillParameters(String intent, String content) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         // 当前只提取稳定、低风险的订单号；地址、退款原因等复杂槽位后续由专门 NLU/表单补齐。
-        if ("order.query".equals(intent) || "order.modify_address".equals(intent)) {
+        if ("order.query".equals(intent) || "order.modify_address".equals(intent) || "logistics.query".equals(intent)) {
             String orderNo = extractOrderNo(content);
             if (orderNo != null && !orderNo.isBlank()) {
                 parameters.put("orderNo", orderNo);
@@ -994,11 +997,15 @@ public class MockAgentOrchestrator {
         metadata.put("intent", intentGuess.intent());
         metadata.put("confidence", intentGuess.confidence());
         metadata.put("skillId", skillConfig == null ? "" : skillConfig.skillId());
-        metadata.put("mock", true);
+        Object mock = true;
         if (skillExecution != null) {
             metadata.put("skillExecutionId", skillExecution.executionId());
             metadata.put("skillExecutionStatus", skillExecution.status());
+            if (skillExecution.response() != null && skillExecution.response().containsKey("mock")) {
+                mock = skillExecution.response().get("mock");
+            }
         }
+        metadata.put("mock", mock);
         if (faqResult != null) {
             metadata.put("knowledgeAnswerId", faqResult.answerId());
             metadata.put("knowledgeMatched", faqResult.matched());

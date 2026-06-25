@@ -55,6 +55,23 @@ npm run dev:workstation
 
 APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `channel` 应为 `app-h5`。
 
+## 2.1 自动查物流
+
+在用户端 H5 发送：
+
+```text
+我的物流到哪了
+```
+
+预期结果：
+
+- 用户端收到 Agent 物流回复
+- 路由决策为 `AUTO_REPLY`
+- 响应 metadata 中包含 `skillExecutionId`
+- 响应 metadata 中 `intent = logistics.query`
+- 回复内容包含承运商、运单号、物流状态或最新物流节点
+- 不创建人工工单
+
 ## 2.5 FAQ 知识库自动问答
 
 在用户端 H5 发送：

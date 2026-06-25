@@ -45,7 +45,7 @@ GET /api/skills
 
 | 参数 | 必填 | 说明 |
 | --- | --- | --- |
-| `intent` | 否 | 按意图过滤，例如 `order.query` |
+| `intent` | 否 | 按意图过滤，例如 `order.query`、`logistics.query` |
 | `status` | 否 | 按技能状态过滤，例如 `ACTIVE` |
 | `enabled` | 否 | `true` / `false` |
 
@@ -174,3 +174,19 @@ Invoke-RestMethod `
 - `skillExecutionStatus`
 
 同时数据库 `skill_execution_log` 会新增一条由 Skill Engine 写入的执行记录。
+
+物流查询同样走自动技能路径：
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$body = '{"userId":"u1001","content":"我的物流到哪了"}'
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:8080/api/chat/messages `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body $bytes
+```
+
+预期返回 `AUTO_REPLY`，`data.metadata.intent = logistics.query`，并包含 `skillExecutionId`。
