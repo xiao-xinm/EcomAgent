@@ -141,7 +141,7 @@ smartcs:
 - `AUTO_REPLY`
 - `AUTO_EXECUTE`
 
-人工审核、人工接管、确认后执行路径暂时仍由 Agent Core 本地记录和兜底，避免 Skill Engine 未启动时影响敏感工单闭环。
+初始 `CONFIRM_BEFORE_EXECUTE` 只记录待确认状态；用户点击确认后会以 `AUTO_EXECUTE` 再调用 Skill Engine。人工审核、人工接管路径暂时仍由 Agent Core 本地记录和兜底，避免 Skill Engine 未启动时影响敏感工单闭环。
 
 ## 4. 本地联调顺序
 
@@ -190,3 +190,29 @@ Invoke-RestMethod `
 ```
 
 预期返回 `AUTO_REPLY`，`data.metadata.intent = logistics.query`，并包含 `skillExecutionId`。
+
+取消订单走确认后执行路径：
+
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$body = '{"userId":"u1001","content":"我要取消订单 E2E-ORDER-1002"}'
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+
+$reply = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:8080/api/chat/messages `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body $bytes
+
+$sessionId = $reply.data.sessionId
+$body = "{`"sessionId`":`"$sessionId`",`"userId`":`"u1001`",`"actionId`":`"confirm`",`"actionType`":`"CONFIRM`",`"content`":`"确认取消订单`",`"payload`":{`"orderNo`":`"E2E-ORDER-1002`"}}"
+$bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://localhost:8080/api/chat/actions `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body $bytes
+```
+
+预期确认后返回 `AUTO_EXECUTE`，`data.metadata.intent = order.cancel`，并包含 `skillExecutionId`。当前阶段只更新本地订单影子状态，不处理真实退款。

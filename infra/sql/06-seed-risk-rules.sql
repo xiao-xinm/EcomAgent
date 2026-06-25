@@ -116,6 +116,20 @@ INSERT INTO `risk_rule` (
     '1.0.0'
 ),
 (
+    'R009_ORDER_CANCEL_CONFIRM',
+    '取消订单需用户确认',
+    'order.cancel',
+    'PRE_EXECUTION',
+    'intent == "order.cancel"',
+    'L2',
+    'CONFIRM_BEFORE_EXECUTE',
+    'UPGRADE',
+    740,
+    1,
+    '取消订单会变更订单状态，执行前必须由用户确认；真实退款不由 Agent 自动处理。',
+    '1.0.0'
+),
+(
     'R008_SIGNED_ADDRESS_REJECT',
     '已签收订单禁止修改地址',
     'order.modify_address',

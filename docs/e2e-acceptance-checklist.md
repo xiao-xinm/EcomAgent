@@ -109,6 +109,27 @@ APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `chan
 
 如果页面提交失败，可用 Postman 按 `docs/chat-api.md` 中的确认动作示例排查完整 `payload`。
 
+## 3.5 取消订单确认
+
+在用户端 H5 发送：
+
+```text
+我要取消订单 E2E-ORDER-1002
+```
+
+预期结果：
+
+- 用户端收到确认类回复
+- 路由决策为 `CONFIRM_BEFORE_EXECUTE`
+- 用户点击“确认继续”后，前端调用 `POST /api/chat/actions`
+- 成功后回复中包含 `skillExecutionId`
+- 响应 metadata 中 `intent = order.cancel`
+- 回复内容说明订单已取消，同时说明不处理真实退款
+- `ecom_order.order_status` 更新为 `CANCELLED`
+- 不创建人工工单
+
+如果未提供订单号，预期确认后不会自动取消最近订单，而是提示需要补充订单号。
+
 ## 4. 退款人工审核
 
 在用户端 H5 发送：

@@ -67,6 +67,21 @@ INSERT INTO `skill_registry` (
     '1.0.0'
 ),
 (
+    'order_cancel',
+    '取消订单',
+    'order.cancel',
+    'L2',
+    'SYNC',
+    1,
+    'ACTIVE',
+    '用户确认后取消未发货订单；不处理真实退款。',
+    JSON_OBJECT('requires_authenticated_user', true, 'confirm_required', true, 'refund_not_handled', true),
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 1000),
+    30000,
+    'smartcs',
+    '1.0.0'
+),
+(
     'refund_apply_review',
     '退款申请人工审核',
     'refund.apply',
@@ -195,6 +210,30 @@ INSERT INTO `skill_slot` (
     '请提供收货人姓名。',
     NULL,
     40
+),
+(
+    'order_cancel',
+    'order_id',
+    'ORDER_ID',
+    1,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT'),
+    NULL,
+    '^[A-Za-z0-9_-]{6,64}$',
+    '请提供需要取消的订单号。',
+    NULL,
+    10
+),
+(
+    'order_cancel',
+    'cancel_reason',
+    'STRING',
+    0,
+    JSON_ARRAY('EXTRACTED', 'CONTEXT', 'DEFAULT'),
+    NULL,
+    NULL,
+    '请说明取消原因。',
+    JSON_OBJECT('value', 'USER_CONFIRMED_ORDER_CANCEL'),
+    20
 ),
 (
     'refund_apply_review',
@@ -400,6 +439,23 @@ INSERT INTO `skill_api_step` (
     1,
     '/business-api/orders/address/rollback',
     JSON_OBJECT('modifyRequestId', '$.step2.response.modifyRequestId'),
+    10000,
+    JSON_OBJECT('max_retries', 1, 'backoff_ms', 1000)
+),
+(
+    'order_cancel',
+    1,
+    '取消订单',
+    'business.order.cancel',
+    'PATCH',
+    '/business-api/orders/cancel',
+    JSON_OBJECT('orderId', 'slots.order_id', 'userId', 'session.user_id'),
+    NULL,
+    JSON_OBJECT('cancelReason', 'slots.cancel_reason', 'refundHandled', false),
+    JSON_OBJECT('orderStatus', '$.status', 'cancelled', '$.cancelled', 'refundHandled', '$.refundHandled'),
+    1,
+    NULL,
+    NULL,
     10000,
     JSON_OBJECT('max_retries', 1, 'backoff_ms', 1000)
 )

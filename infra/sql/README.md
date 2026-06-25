@@ -38,10 +38,11 @@
 - `order.query`
 - `logistics.query`
 - `order.modify_address`
+- `order.cancel`
 - `refund.apply`
 - `exchange.apply`
 
-其中退款和换货技能默认是 `L3 + REVIEW_ONLY`，只进入人工审核，不由 Agent 直接执行业务动作。
+其中退款和换货技能默认是 `L3 + REVIEW_ONLY`，只进入人工审核，不由 Agent 直接执行业务动作。取消订单是 `L2 + SYNC`，需要用户确认后才会更新本地订单影子状态，且不处理真实退款。
 
 第三阶段已覆盖：
 
@@ -61,3 +62,4 @@
 - 高金额操作人工审核
 - 高频操作转人工接管
 - 地址修改按订单状态动态升级
+- 取消订单执行前用户确认

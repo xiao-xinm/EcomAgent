@@ -174,7 +174,8 @@ public class MockAgentOrchestrator {
                 ticketId,
                 skillConfig,
                 skillExecution,
-                faqResult);
+                faqResult,
+                content);
         insertAgentMessage(reply, userId);
         LOGGER.info(
                 "Agent编排完成 traceId={} sessionId={} replyId={} routeDecision={} ticketId={} skillExecutionId={}",
@@ -560,6 +561,10 @@ public class MockAgentOrchestrator {
         if (containsAny(lower, "物流", "快递", "运单", "包裹", "配送", "到哪")) {
             return new IntentGuess("logistics.query", 0.87);
         }
+        if (containsAny(lower, "取消订单", "订单取消", "撤销订单", "关闭订单")
+                || (containsAny(lower, "取消", "撤销", "关闭") && containsAny(lower, "订单"))) {
+            return new IntentGuess("order.cancel", 0.88);
+        }
         if (containsAny(lower, "订单", "查询")) {
             return new IntentGuess("order.query", 0.86);
         }
@@ -614,6 +619,17 @@ public class MockAgentOrchestrator {
                     RouteDecision.CONFIRM_BEFORE_EXECUTE,
                     "ADDRESS_MODIFY_CONFIRM",
                     "修改收货地址需要用户确认后执行");
+        }
+        if ("order.cancel".equals(intentGuess.intent())) {
+            RiskRule rule = findRule(rules, "R009_ORDER_CANCEL_CONFIRM");
+            if (rule != null) {
+                return fromRule(rule, "取消订单需要用户确认后执行");
+            }
+            return new RuleDecision(
+                    RiskLevel.L2,
+                    RouteDecision.CONFIRM_BEFORE_EXECUTE,
+                    "ORDER_CANCEL_CONFIRM",
+                    "取消订单需要用户确认后执行");
         }
 
         if ("faq.query".equals(intentGuess.intent())) {
@@ -902,7 +918,10 @@ public class MockAgentOrchestrator {
     private Map<String, Object> buildSkillParameters(String intent, String content) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         // 当前只提取稳定、低风险的订单号；地址、退款原因等复杂槽位后续由专门 NLU/表单补齐。
-        if ("order.query".equals(intent) || "order.modify_address".equals(intent) || "logistics.query".equals(intent)) {
+        if ("order.query".equals(intent)
+                || "order.modify_address".equals(intent)
+                || "logistics.query".equals(intent)
+                || "order.cancel".equals(intent)) {
             String orderNo = extractOrderNo(content);
             if (orderNo != null && !orderNo.isBlank()) {
                 parameters.put("orderNo", orderNo);
@@ -972,7 +991,8 @@ public class MockAgentOrchestrator {
             String ticketId,
             SkillConfig skillConfig,
             SkillExecutionResult skillExecution,
-            FaqQueryResult faqResult) {
+            FaqQueryResult faqResult,
+            String userContent) {
         String skillMessage = skillExecutionMessage(skillExecution);
         String knowledgeMessage = knowledgeAnswerMessage(faqResult);
         String autoReplyMessage = textOr(knowledgeMessage, skillMessage);
@@ -988,15 +1008,19 @@ public class MockAgentOrchestrator {
             case HUMAN_TAKEOVER -> "我已为你转人工处理" + suffixTicket(ticketId) + "，请稍等。";
             case REJECT -> "当前请求暂时无法自动处理。";
         };
+        Map<String, Object> actionPayload = buildSkillParameters(intentGuess.intent(), userContent);
         List<QuickAction> quickActions = decision.routeDecision() == RouteDecision.CONFIRM_BEFORE_EXECUTE
                 ? List.of(
-                        new QuickAction("确认继续", "confirm", "CONFIRM", Map.of()),
-                        new QuickAction("取消", "cancel", "CANCEL", Map.of()))
+                        new QuickAction("确认继续", "confirm", "CONFIRM", actionPayload),
+                        new QuickAction("取消", "cancel", "CANCEL", actionPayload))
                 : List.of();
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("intent", intentGuess.intent());
         metadata.put("confidence", intentGuess.confidence());
         metadata.put("skillId", skillConfig == null ? "" : skillConfig.skillId());
+        if (actionPayload.containsKey("orderNo")) {
+            metadata.put("orderNo", actionPayload.get("orderNo"));
+        }
         Object mock = true;
         if (skillExecution != null) {
             metadata.put("skillExecutionId", skillExecution.executionId());
@@ -1098,6 +1122,7 @@ public class MockAgentOrchestrator {
             case "refund.apply" -> "REFUND";
             case "exchange.apply" -> "EXCHANGE";
             case "order.modify_address" -> "ADDRESS_CHANGE";
+            case "order.cancel" -> "ORDER_CANCEL";
             default -> "OTHER";
         };
     }

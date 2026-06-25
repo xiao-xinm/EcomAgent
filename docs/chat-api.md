@@ -342,6 +342,39 @@ skillExecutionStatus
 
 同时 `skill_execution_log` 会新增一条 `AUTO_EXECUTE` 的执行记录。
 
+取消订单复用同一套确认动作，但不需要地址表单。先发送：
+
+```powershell
+$body = '{"userId":"u1001","channel":"h5","content":"我要取消订单 E2E-ORDER-1002"}'
+```
+
+预期初始回复：
+
+```text
+routeDecision = CONFIRM_BEFORE_EXECUTE
+metadata.intent = order.cancel
+```
+
+再用返回的 `sessionId` 调用：
+
+```powershell
+$body = @"
+{
+  "sessionId": "$sessionId",
+  "userId": "u1001",
+  "channel": "h5",
+  "actionId": "confirm",
+  "actionType": "CONFIRM",
+  "content": "确认取消订单",
+  "payload": {
+    "orderNo": "E2E-ORDER-1002"
+  }
+}
+"@
+```
+
+H5 点击 Agent 返回的“确认继续”时会自动携带快捷动作里的 `payload.orderNo`；Postman 手工测试时需要像上面一样显式传入。确认成功时，响应中会包含 `skillExecutionId`，内容会说明订单已取消。当前阶段只更新本地订单影子状态，不处理真实退款。
+
 最后可以查询会话状态和消息：
 
 ```powershell

@@ -304,6 +304,9 @@ public class SkillExecutionService {
         if ("order.modify_address".equals(skill.intent())) {
             return buildModifyAddressResponse(skill, request, status);
         }
+        if ("order.cancel".equals(skill.intent())) {
+            return buildOrderCancelResponse(skill, request, status);
+        }
 
         response.put("mock", true);
         response.put("skillId", skill.skillId());
@@ -466,10 +469,78 @@ public class SkillExecutionService {
         }
     }
 
+    private Map<String, Object> buildOrderCancelResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        if (!"SUCCEEDED".equals(status)) {
+            return mockOrderCancelResponse(skill, request, status);
+        }
+
+        try {
+            Map<String, Object> response = baseSkillResponse(skill, status);
+            response.put("mock", false);
+            response.put("source", "ecom_order");
+
+            if (!hasExplicitOrderReference(request)) {
+                response.put("found", false);
+                response.put("cancelled", false);
+                response.put("summary", "取消订单需要明确订单号，请补充订单号后再确认。");
+                return response;
+            }
+
+            OrderSnapshot order = findOrderForQuery(request);
+            response.put("found", order != null);
+            if (order == null) {
+                response.put("cancelled", false);
+                response.put("summary", "暂未查询到可取消的订单，请补充订单号或联系人工客服。");
+                return response;
+            }
+
+            response.put("orderId", order.orderId());
+            response.put("orderNo", order.orderNo());
+            response.put("previousOrderStatus", order.orderStatus());
+            response.put("previousPayStatus", order.payStatus());
+            response.put("logisticsStatus", order.logisticsStatus());
+            if (!canApplyOrderCancel(order)) {
+                response.put("cancelled", false);
+                response.put("requiresHuman", true);
+                response.put("summary", "当前订单状态不支持自动取消，请转人工处理。");
+                return response;
+            }
+
+            applyOrderCancel(order);
+            response.put("cancelled", true);
+            response.put("refundHandled", false);
+            response.put("orderStatus", "CANCELLED");
+            response.put("summary", orderCancelSummary(order));
+            return response;
+        } catch (DataAccessException exception) {
+            LOGGER.warn(
+                    "取消电商订单失败，回退到mock响应 traceId={} sessionId={} userId={}",
+                    request.traceId(),
+                    request.sessionId(),
+                    request.userId(),
+                    exception);
+            Map<String, Object> response = mockOrderCancelResponse(skill, request, status);
+            response.put("fallbackReason", "ORDER_CANCEL_FAILED");
+            return response;
+        }
+    }
+
     private boolean canApplyAddressModify(OrderSnapshot order) {
         return order.canModifyAddress()
                 && List.of("CREATED", "PAID", "PACKING").contains(order.orderStatus())
                 && List.of("NONE", "WAITING_SHIP").contains(order.logisticsStatus());
+    }
+
+    private boolean canApplyOrderCancel(OrderSnapshot order) {
+        return List.of("CREATED", "PAID", "PACKING").contains(order.orderStatus())
+                && List.of("NONE", "WAITING_SHIP").contains(order.logisticsStatus());
+    }
+
+    private boolean hasExplicitOrderReference(SkillExecuteRequest request) {
+        return hasText(firstText(request.parameters(), "order_id", "orderId", "order_no", "orderNo"));
     }
 
     private void applyAddressModify(
@@ -518,6 +589,20 @@ public class SkillExecutionService {
                 address.postalCode(),
                 hasText(messageId) ? messageId : null,
                 textOr(address.changeReason(), "USER_CONFIRMED_ADDRESS_MODIFY"));
+    }
+
+    private void applyOrderCancel(OrderSnapshot order) {
+        // 当前只取消本地订单影子状态，不触发真实支付退款；退款仍走人工审核或后续支付流程。
+        jdbcTemplate.update(
+                """
+                UPDATE ecom_order
+                SET order_status = 'CANCELLED',
+                    pay_status = CASE WHEN pay_status = 'UNPAID' THEN 'CLOSED' ELSE pay_status END,
+                    logistics_status = CASE WHEN logistics_status IN ('NONE', 'WAITING_SHIP') THEN 'NONE' ELSE logistics_status END,
+                    can_modify_address = 0
+                WHERE order_id = ?
+                """,
+                order.orderId());
     }
 
     private OrderSnapshot findOrderForQuery(SkillExecuteRequest request) {
@@ -615,6 +700,10 @@ public class SkillExecutionService {
                 + "，预计送达：" + estimatedDeliveryTime(order.logisticsStatus()) + "。";
     }
 
+    private String orderCancelSummary(OrderSnapshot order) {
+        return "已取消订单 " + order.orderNo() + "。如该订单已支付，退款仍需按售后或支付流程处理。";
+    }
+
     private String trackingNo(OrderSnapshot order) {
         String normalized = order.orderNo() == null ? order.orderId() : order.orderNo().replaceAll("[^A-Za-z0-9]", "");
         return "SF" + normalized;
@@ -680,6 +769,19 @@ public class SkillExecutionService {
         response.put("orderNo", firstText(request.parameters(), "order_no", "orderNo"));
         response.put("modifyRequestId", "addr_" + UUID.randomUUID());
         response.put("summary", "已记录改地址请求，真实电商订单 API 后续接入。");
+        return response;
+    }
+
+    private Map<String, Object> mockOrderCancelResponse(
+            SkillDefinitionView skill,
+            SkillExecuteRequest request,
+            String status) {
+        Map<String, Object> response = baseSkillResponse(skill, status);
+        response.put("mock", true);
+        response.put("orderNo", firstText(request.parameters(), "order_no", "orderNo"));
+        response.put("cancelled", false);
+        response.put("refundHandled", false);
+        response.put("summary", "已记录取消订单请求，真实电商订单 API 后续接入。");
         return response;
     }
 
@@ -778,6 +880,7 @@ public class SkillExecutionService {
         return switch (intent) {
             case "order.query" -> "已完成订单查询。";
             case "logistics.query" -> "已完成物流查询。";
+            case "order.cancel" -> "已完成订单取消。";
             default -> "已完成技能执行，真实业务 API 后续接入。";
         };
     }
