@@ -6,7 +6,7 @@
 
 - 用户端 H5：`GET /api/chat/sessions/{sessionId}/messages?limit=100`
 - 坐席工作台：操作成功后重新拉取工单详情、会话消息和操作日志
-- APP H5：当前仍是工程占位，正式实现时应复用用户端 H5 的短轮询策略
+- APP H5：复用用户端 H5 的聊天能力和短轮询策略，默认渠道为 `app-h5`
 
 ## 1. 启动服务
 
@@ -26,12 +26,14 @@ MySQL 使用当前开发库，账号密码按本地配置。
 ```powershell
 cd D:\NewProject\EcomAgent\frontend
 npm run dev:client-h5
+npm run dev:app-h5
 npm run dev:workstation
 ```
 
 默认页面：
 
 - 用户端 H5：`http://localhost:3000`
+- APP H5：`http://localhost:3002`
 - 坐席工作台：`http://localhost:3001`
 
 ## 2. 自动查订单
@@ -48,6 +50,8 @@ npm run dev:workstation
 - 路由决策为 `AUTO_REPLY`
 - 响应 metadata 中包含 `skillExecutionId`
 - 不创建人工工单
+
+APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `channel` 应为 `app-h5`。
 
 ## 3. 修改地址确认
 

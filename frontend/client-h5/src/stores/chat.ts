@@ -7,6 +7,7 @@ import { ERROR_CODES } from '@/types/api'
 
 const SESSION_STORAGE_KEY = 'smartcs_session_id'
 const DEFAULT_USER_ID = import.meta.env.VITE_USER_ID || 'u1001'
+const DEFAULT_CHANNEL = import.meta.env.VITE_CHANNEL || 'h5'
 const POLLING_INTERVAL_MS = Number(import.meta.env.VITE_CHAT_POLLING_INTERVAL_MS || 3000)
 
 function generateId(): string {
@@ -186,7 +187,7 @@ export const useChatStore = defineStore('chat', () => {
       content: trimmed,
       timestamp: Date.now(),
       status: 'sending',
-      metadata: { channel: 'h5' },
+      metadata: { channel: DEFAULT_CHANNEL },
     }
     addMessage(userMsg)
     loading.value = true
@@ -195,7 +196,7 @@ export const useChatStore = defineStore('chat', () => {
       const request: ChatRequest = {
         sessionId: sessionId.value,
         userId: userId.value,
-        channel: 'h5',
+        channel: DEFAULT_CHANNEL,
         content: trimmed,
       }
 
@@ -286,7 +287,7 @@ export const useChatStore = defineStore('chat', () => {
       const response = await sendAction({
         sessionId: sessionId.value,
         userId: userId.value,
-        channel: 'h5',
+        channel: DEFAULT_CHANNEL,
         actionId: action.value,
         actionType: action.actionType || action.value,
         content: options.content || action.label,
