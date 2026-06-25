@@ -1,8 +1,23 @@
 server:
   port: 8085
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
 
 spring:
   application:
     name: smartcs-notification
   profiles:
     active: dev
+  cloud:
+    nacos:
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+      discovery:
+        enabled: false
+    sentinel:
+      enabled: false

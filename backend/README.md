@@ -29,3 +29,4 @@ mvn -pl smartcs-agent-core spring-boot:run -Dspring-boot.run.profiles=dev
 - Skill Engine: `GET http://localhost:8082/api/health`
 - Workbench: `GET http://localhost:8083/api/health`
 - Knowledge: `GET http://localhost:8084/api/health`
+- Notification: `GET http://localhost:8085/api/health`

@@ -16,6 +16,8 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.WorkOrderView;
+import com.smartcs.agent.workbench.notification.NotificationEventClient;
+import com.smartcs.agent.workbench.notification.NotificationEventDtos.NotificationEventRequest;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -51,10 +53,15 @@ public class WorkbenchTicketService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final NotificationEventClient notificationEventClient;
 
-    public WorkbenchTicketService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+    public WorkbenchTicketService(
+            JdbcTemplate jdbcTemplate,
+            ObjectMapper objectMapper,
+            NotificationEventClient notificationEventClient) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.notificationEventClient = notificationEventClient;
     }
 
     public PageResult<TicketSummary> listTickets(
@@ -254,10 +261,17 @@ public class WorkbenchTicketService {
                 data("beforeStatus", ticket.status(), "afterStatus", "APPROVED", "approvalId", approval.approvalId()));
         insertAudit(ticket, request.operatorId(), "APPROVAL_APPROVED",
                 data("approvalId", approval.approvalId(), "beforeStatus", approval.status(), "afterStatus", "APPROVED"));
-        insertUserVisibleMessage(ticket, "SYSTEM", approvalApprovedContent(approval), request.operatorId(),
+        String userMessage = approvalApprovedContent(approval);
+        Map<String, Object> notificationData = data(
+                "approvalId", approval.approvalId(),
+                "approvalType", approval.approvalType(),
+                "approvalStatus", "APPROVED",
+                "workOrderStatus", "APPROVED");
+        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
                 "APPROVAL_APPROVED",
-                data("approvalId", approval.approvalId(), "approvalType", approval.approvalType(),
-                        "approvalStatus", "APPROVED", "workOrderStatus", "APPROVED"));
+                notificationData);
+        publishNotificationEvent(ticket, "APPROVAL_APPROVED", "审批通过通知", userMessage,
+                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "审批已通过");
         logActionResult("审批通过完成", actionResult, request.operatorId());
         return actionResult;
@@ -314,10 +328,17 @@ public class WorkbenchTicketService {
                 data("beforeStatus", ticket.status(), "afterStatus", "REJECTED", "approvalId", approval.approvalId()));
         insertAudit(ticket, request.operatorId(), "APPROVAL_REJECTED",
                 data("approvalId", approval.approvalId(), "beforeStatus", approval.status(), "afterStatus", "REJECTED"));
-        insertUserVisibleMessage(ticket, "SYSTEM", approvalRejectedContent(approval), request.operatorId(),
+        String userMessage = approvalRejectedContent(approval);
+        Map<String, Object> notificationData = data(
+                "approvalId", approval.approvalId(),
+                "approvalType", approval.approvalType(),
+                "approvalStatus", "REJECTED",
+                "workOrderStatus", "REJECTED");
+        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
                 "APPROVAL_REJECTED",
-                data("approvalId", approval.approvalId(), "approvalType", approval.approvalType(),
-                        "approvalStatus", "REJECTED", "workOrderStatus", "REJECTED"));
+                notificationData);
+        publishNotificationEvent(ticket, "APPROVAL_REJECTED", "审批驳回通知", userMessage,
+                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "审批已驳回");
         logActionResult("审批驳回完成", actionResult, request.operatorId());
         return actionResult;
@@ -364,10 +385,16 @@ public class WorkbenchTicketService {
                         "payload", request.payload()));
         insertAudit(ticket, request.operatorId(), "TAKEOVER_STARTED",
                 data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", "IN_PROGRESS"));
-        insertUserVisibleMessage(ticket, "HUMAN_AGENT", takeoverStartedContent(), request.operatorId(),
+        String userMessage = takeoverStartedContent();
+        Map<String, Object> notificationData = data(
+                "takeoverId", takeover.takeoverId(),
+                "takeoverStatus", "IN_PROGRESS",
+                "workOrderStatus", "PROCESSING");
+        insertUserVisibleMessage(ticket, "HUMAN_AGENT", userMessage, request.operatorId(),
                 "TAKEOVER_STARTED",
-                data("takeoverId", takeover.takeoverId(), "takeoverStatus", "IN_PROGRESS",
-                        "workOrderStatus", "PROCESSING"));
+                notificationData);
+        publishNotificationEvent(ticket, "TAKEOVER_STARTED", "人工客服接入通知", userMessage,
+                request.operatorId(), notificationData);
         ActionResult result = currentResult(ticketId, "人工接管已开始");
         logActionResult("人工接管开始完成", result, request.operatorId());
         return result;
@@ -426,10 +453,16 @@ public class WorkbenchTicketService {
                 data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", takeoverTarget));
         insertAudit(ticket, request.operatorId(), "TAKEOVER_FINISHED",
                 data("takeoverId", takeover.takeoverId(), "beforeStatus", takeover.status(), "afterStatus", takeoverTarget));
-        insertUserVisibleMessage(ticket, "HUMAN_AGENT", takeoverFinishedContent(takeoverTarget), request.operatorId(),
+        String userMessage = takeoverFinishedContent(takeoverTarget);
+        Map<String, Object> notificationData = data(
+                "takeoverId", takeover.takeoverId(),
+                "takeoverStatus", takeoverTarget,
+                "workOrderStatus", workOrderTarget);
+        insertUserVisibleMessage(ticket, "HUMAN_AGENT", userMessage, request.operatorId(),
                 "TAKEOVER_FINISHED",
-                data("takeoverId", takeover.takeoverId(), "takeoverStatus", takeoverTarget,
-                        "workOrderStatus", workOrderTarget));
+                notificationData);
+        publishNotificationEvent(ticket, "TAKEOVER_FINISHED", "人工客服处理结束通知", userMessage,
+                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "人工接管已结束");
         logActionResult("人工接管结束完成", actionResult, request.operatorId());
         return actionResult;
@@ -693,6 +726,36 @@ public class WorkbenchTicketService {
                 messageId,
                 role,
                 actionType);
+    }
+
+    private void publishNotificationEvent(
+            WorkOrderView ticket,
+            String eventType,
+            String title,
+            String content,
+            String operatorId,
+            Map<String, Object> eventData) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("intent", ticket.intent());
+        payload.put("riskLevel", ticket.riskLevel());
+        payload.put("routeDecision", ticket.routeDecision());
+        if (eventData != null) {
+            payload.putAll(eventData);
+        }
+        notificationEventClient.publish(new NotificationEventRequest(
+                "ntf_" + UUID.randomUUID(),
+                ticket.traceId(),
+                "smartcs-workbench",
+                eventType,
+                ticket.userId(),
+                ticket.sessionId(),
+                ticket.ticketId(),
+                operatorId,
+                "USER_SESSION",
+                title,
+                content,
+                payload,
+                Instant.now()));
     }
 
     private String approvalApprovedContent(ApprovalTaskView approval) {

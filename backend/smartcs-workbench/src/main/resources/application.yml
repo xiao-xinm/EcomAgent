@@ -26,3 +26,8 @@ spring:
         enabled: false
     sentinel:
       enabled: false
+
+smartcs:
+  notification:
+    enabled: ${SMARTCS_NOTIFICATION_ENABLED:true}
+    base-url: ${SMARTCS_NOTIFICATION_BASE_URL:http://localhost:8085}
