@@ -10,6 +10,9 @@ import com.smartcs.agent.common.enums.MessageType;
 import com.smartcs.agent.common.enums.RiskLevel;
 import com.smartcs.agent.common.enums.RouteDecision;
 import com.smartcs.agent.common.util.TraceIds;
+import com.smartcs.agent.core.knowledge.KnowledgeFaqClient;
+import com.smartcs.agent.core.knowledge.KnowledgeFaqDtos.FaqQueryRequest;
+import com.smartcs.agent.core.knowledge.KnowledgeFaqDtos.FaqQueryResult;
 import com.smartcs.agent.core.skill.SkillEngineClient;
 import com.smartcs.agent.core.skill.SkillExecutionDtos.SkillExecutionRequest;
 import com.smartcs.agent.core.skill.SkillExecutionDtos.SkillExecutionResult;
@@ -44,14 +47,17 @@ public class MockAgentOrchestrator {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final SkillEngineClient skillEngineClient;
+    private final KnowledgeFaqClient knowledgeFaqClient;
 
     public MockAgentOrchestrator(
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper,
-            SkillEngineClient skillEngineClient) {
+            SkillEngineClient skillEngineClient,
+            KnowledgeFaqClient knowledgeFaqClient) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.skillEngineClient = skillEngineClient;
+        this.knowledgeFaqClient = knowledgeFaqClient;
     }
 
     public AgentReply process(ChatRequest request) {
@@ -106,6 +112,25 @@ public class MockAgentOrchestrator {
 
         // 4. 自动路径交给 Skill Engine；失败时保留本地执行日志兜底，避免聊天链路中断。
         SkillExecutionResult skillExecution = null;
+        FaqQueryResult faqResult = null;
+        if (canCallKnowledge(intentGuess.intent(), ruleDecision.routeDecision())) {
+            faqResult = knowledgeFaqClient.query(new FaqQueryRequest(
+                            traceId,
+                            sessionId,
+                            userId,
+                            channel,
+                            content))
+                    .orElse(null);
+            if (faqResult != null) {
+                LOGGER.info(
+                        "Agent收到Knowledge FAQ结果 traceId={} sessionId={} answerId={} matched={} confidence={}",
+                        traceId,
+                        sessionId,
+                        faqResult.answerId(),
+                        faqResult.matched(),
+                        faqResult.confidence());
+            }
+        }
         if (skillConfig != null && canCallSkillEngine(ruleDecision.routeDecision())) {
             skillExecution = skillEngineClient.execute(buildSkillExecutionRequest(
                             traceId,
@@ -141,7 +166,15 @@ public class MockAgentOrchestrator {
             insertSkillExecutionLog(traceId, sessionId, userMessageId, userId, intentGuess.intent(), skillConfig, ruleDecision);
         }
 
-        AgentReply reply = buildReply(traceId, sessionId, intentGuess, ruleDecision, ticketId, skillConfig, skillExecution);
+        AgentReply reply = buildReply(
+                traceId,
+                sessionId,
+                intentGuess,
+                ruleDecision,
+                ticketId,
+                skillConfig,
+                skillExecution,
+                faqResult);
         insertAgentMessage(reply, userId);
         LOGGER.info(
                 "Agent编排完成 traceId={} sessionId={} replyId={} routeDecision={} ticketId={} skillExecutionId={}",
@@ -511,6 +544,10 @@ public class MockAgentOrchestrator {
 
     private IntentGuess detectIntent(String content) {
         String lower = content == null ? "" : content.toLowerCase();
+        // FAQ 只处理政策、规则、时效这类知识问法；敏感操作请求仍交给人工审核链路。
+        if (isFaqQuestion(lower)) {
+            return new IntentGuess("faq.query", 0.84);
+        }
         if (containsAny(lower, "退款", "退货", "退钱", "refund")) {
             return new IntentGuess("refund.apply", 0.93);
         }
@@ -576,6 +613,9 @@ public class MockAgentOrchestrator {
                     "修改收货地址需要用户确认后执行");
         }
 
+        if ("faq.query".equals(intentGuess.intent())) {
+            return new RuleDecision(RiskLevel.L0, RouteDecision.AUTO_REPLY, "FAQ_AUTO_REPLY", "FAQ 知识库自动回答");
+        }
         if (skillConfig == null) {
             return new RuleDecision(RiskLevel.L3, RouteDecision.HUMAN_TAKEOVER, "NO_SKILL", "未找到可用技能");
         }
@@ -928,11 +968,14 @@ public class MockAgentOrchestrator {
             RuleDecision decision,
             String ticketId,
             SkillConfig skillConfig,
-            SkillExecutionResult skillExecution) {
+            SkillExecutionResult skillExecution,
+            FaqQueryResult faqResult) {
         String skillMessage = skillExecutionMessage(skillExecution);
+        String knowledgeMessage = knowledgeAnswerMessage(faqResult);
+        String autoReplyMessage = textOr(knowledgeMessage, skillMessage);
         String content = switch (decision.routeDecision()) {
             case AUTO_REPLY -> textOr(
-                    skillMessage,
+                    autoReplyMessage,
                     "我识别到你的需求是「" + intentGuess.intent() + "」。当前已完成最小闭环，真实业务系统稍后接入。");
             case AUTO_EXECUTE -> textOr(
                     skillMessage,
@@ -955,6 +998,13 @@ public class MockAgentOrchestrator {
         if (skillExecution != null) {
             metadata.put("skillExecutionId", skillExecution.executionId());
             metadata.put("skillExecutionStatus", skillExecution.status());
+        }
+        if (faqResult != null) {
+            metadata.put("knowledgeAnswerId", faqResult.answerId());
+            metadata.put("knowledgeMatched", faqResult.matched());
+            metadata.put("knowledgeConfidence", faqResult.confidence());
+            metadata.put("knowledgeSource", faqResult.source());
+            metadata.put("matchedKeywords", faqResult.matchedKeywords() == null ? List.of() : faqResult.matchedKeywords());
         }
         return new AgentReply(
                 "r_" + UUID.randomUUID(),
@@ -999,6 +1049,10 @@ public class MockAgentOrchestrator {
         return routeDecision == RouteDecision.AUTO_REPLY || routeDecision == RouteDecision.AUTO_EXECUTE;
     }
 
+    private boolean canCallKnowledge(String intent, RouteDecision routeDecision) {
+        return "faq.query".equals(intent) && routeDecision == RouteDecision.AUTO_REPLY;
+    }
+
     private String skillExecutionMessage(SkillExecutionResult skillExecution) {
         if (skillExecution == null) {
             return null;
@@ -1010,6 +1064,10 @@ public class MockAgentOrchestrator {
             }
         }
         return skillExecution.message();
+    }
+
+    private String knowledgeAnswerMessage(FaqQueryResult faqResult) {
+        return faqResult == null ? null : faqResult.answer();
     }
 
     private boolean hasHighAmount(String content) {
@@ -1053,6 +1111,42 @@ public class MockAgentOrchestrator {
 
     private int contentLength(String content) {
         return content == null ? 0 : content.length();
+    }
+
+    private boolean isFaqQuestion(String lower) {
+        boolean looksLikeQuestion = containsAny(
+                lower,
+                "faq",
+                "规则",
+                "政策",
+                "说明",
+                "怎么",
+                "如何",
+                "多久",
+                "几天",
+                "条件",
+                "流程",
+                "标准",
+                "能不能",
+                "可以吗",
+                "怎么算",
+                "是什么");
+        boolean hasKnowledgeTopic = containsAny(
+                lower,
+                "退款",
+                "退货",
+                "换货",
+                "售后",
+                "发票",
+                "开票",
+                "运费",
+                "配送费",
+                "邮费",
+                "保价",
+                "价保",
+                "价格保护",
+                "地址");
+        return looksLikeQuestion && hasKnowledgeTopic;
     }
 
     private boolean containsAny(String value, String... needles) {

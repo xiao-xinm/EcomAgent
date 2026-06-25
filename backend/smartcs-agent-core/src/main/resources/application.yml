@@ -30,3 +30,5 @@ spring:
 smartcs:
   skill-engine:
     base-url: ${SMARTCS_SKILL_ENGINE_BASE_URL:http://localhost:8082}
+  knowledge:
+    base-url: ${SMARTCS_KNOWLEDGE_BASE_URL:http://localhost:8084}

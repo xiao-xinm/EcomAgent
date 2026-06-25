@@ -18,6 +18,7 @@
 - `smartcs-agent-core`：`8081`
 - `smartcs-skill-engine`：`8082`
 - `smartcs-workbench`：`8083`
+- `smartcs-knowledge`：`8084`
 
 MySQL 使用当前开发库，账号密码按本地配置。
 
@@ -52,6 +53,24 @@ npm run dev:workstation
 - 不创建人工工单
 
 APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `channel` 应为 `app-h5`。
+
+## 2.5 FAQ 知识库自动问答
+
+在用户端 H5 发送：
+
+```text
+退款多久到账
+```
+
+预期结果：
+
+- 用户端收到 Agent FAQ 回答
+- 路由决策为 `AUTO_REPLY`
+- 风险等级为 `L0`
+- 响应 metadata 中 `intent = faq.query`
+- 响应 metadata 中包含 `knowledgeAnswerId`
+- 不创建人工工单
+- `我要退款` 仍必须进入 `HUMAN_REVIEW`，不能被 FAQ 分支拦截
 
 ## 3. 修改地址确认
 
