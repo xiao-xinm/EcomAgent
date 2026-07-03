@@ -81,6 +81,12 @@ cd D:\NewProject\EcomAgent\backend
 mvn -pl smartcs-gateway,smartcs-agent-core,smartcs-skill-engine,smartcs-workbench,smartcs-knowledge,smartcs-notification -am test
 ```
 
+每次完成一轮页面或端到端联调后，应复制 [e2e-validation-template.md](./e2e-validation-template.md) 新建验收记录：
+
+```text
+docs/e2e-validation-YYYY-MM-DD.md
+```
+
 ## 2. 自动查订单
 
 在用户端 H5 发送：
