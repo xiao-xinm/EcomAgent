@@ -232,6 +232,7 @@ docs: update architecture diagram for risk routing
 |------|------|------|
 | 需求文档 | [./requirements/AI客服Agent需求文档.md](../AI客服Agent需求文档.md) | 完整功能需求和非功能需求定义 |
 | 架构设计文档 | [./docs/架构设计文档.md](./docs/架构设计文档.md) | 五层架构、核心模块设计、数据模型、部署方案 |
+| 项目路线图 | [./docs/project-roadmap.md](./docs/project-roadmap.md) | 后续开发阶段、执行流程、验收要求和中间件准入规则 |
 | API 文档 | 启动后访问 Swagger UI | 网关 `/swagger-ui.html`、Agent Core `/docs` |
 
 ---

@@ -17,7 +17,7 @@ The repository is split into frontend and backend:
 - `frontend/workstation/`: agent workstation frontend.
 - `infra/`, `docs/`, `requirements/`, `scripts/`: infrastructure and documentation.
 
-Claude Code must read the root `README.md` before making project changes.
+Claude Code must read the root `README.md` and `docs/project-roadmap.md` before making project changes. Future development must follow the phases, workflow, validation rules, and middleware gate defined in `docs/project-roadmap.md`.
 
 ## Current Assignment Scope
 

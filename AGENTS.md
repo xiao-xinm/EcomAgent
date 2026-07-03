@@ -30,10 +30,13 @@
 
 - `README.md`
 - `CLAUDE.md`
+- `docs/project-roadmap.md`
 - 与当前任务相关的前端 `package.json` / `README.md`
 - 用户明确提供的接口文档或需求文档
 
 如果接口文档尚未提供，不要编造接口字段、状态枚举或业务流程。
+
+后续开发必须先确认任务归属到 `docs/project-roadmap.md` 的阶段和流程；若任务不在路线图中，应先更新路线图或明确记录为新增阶段任务。
 
 ## 3. 行为准则
 
