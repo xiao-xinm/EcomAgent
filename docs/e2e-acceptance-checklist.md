@@ -74,6 +74,13 @@ cd D:\NewProject\EcomAgent\frontend
 npm run install:e2e-browsers
 ```
 
+后端控制器契约测试不依赖 MySQL 或其他中间件，可用于快速确认 Gateway、Agent Core、Skill Engine、Workbench、Knowledge、Notification 的基础 API 包装契约：
+
+```powershell
+cd D:\NewProject\EcomAgent\backend
+mvn -pl smartcs-gateway,smartcs-agent-core,smartcs-skill-engine,smartcs-workbench,smartcs-knowledge,smartcs-notification -am test
+```
+
 ## 2. 自动查订单
 
 在用户端 H5 发送：
