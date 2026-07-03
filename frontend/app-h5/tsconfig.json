@@ -23,6 +23,19 @@
       "@app/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "env.d.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "../client-h5/src/components/**/*.vue",
+    "../client-h5/src/config/**/*.ts",
+    "../client-h5/src/services/**/*.ts",
+    "../client-h5/src/stores/**/*.ts",
+    "../client-h5/src/styles/**/*.css",
+    "../client-h5/src/types/**/*.ts",
+    "../client-h5/src/utils/**/*.ts",
+    "../client-h5/src/views/**/*.vue",
+    "env.d.ts"
+  ],
+  "exclude": ["../client-h5/src/**/*.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

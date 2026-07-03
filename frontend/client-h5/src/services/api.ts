@@ -7,9 +7,10 @@ import type {
   ChatSessionView,
   ChatMessageView,
 } from '@/types/api'
+import { runtimeChatConfig } from '@/config/runtime'
 
 const client = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: runtimeChatConfig.apiBaseUrl,
   headers: { 'Content-Type': 'application/json;charset=UTF-8' },
   timeout: 15_000,
 })

@@ -4,11 +4,12 @@ import { sendMessage, sendAction, getSessionMessages } from '@/services/api'
 import type { ChatMessage } from '@/types/chat'
 import type { ChatRequest, ChatMessageView, QuickAction } from '@/types/api'
 import { ERROR_CODES } from '@/types/api'
+import { runtimeChatConfig } from '@/config/runtime'
 
-const SESSION_STORAGE_KEY = 'smartcs_session_id'
-const DEFAULT_USER_ID = import.meta.env.VITE_USER_ID || 'u1001'
-const DEFAULT_CHANNEL = import.meta.env.VITE_CHANNEL || 'h5'
-const POLLING_INTERVAL_MS = Number(import.meta.env.VITE_CHAT_POLLING_INTERVAL_MS || 3000)
+const SESSION_STORAGE_KEY = runtimeChatConfig.sessionStorageKey
+const DEFAULT_USER_ID = runtimeChatConfig.userId
+const DEFAULT_CHANNEL = runtimeChatConfig.channel
+const POLLING_INTERVAL_MS = runtimeChatConfig.pollingIntervalMs
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
