@@ -38,6 +38,15 @@ npm run dev:workstation
 - APP H5：`http://localhost:3002`
 - 坐席工作台：`http://localhost:3001`
 
+服务启动后，可以先执行入口级烟测脚本：
+
+```powershell
+cd D:\NewProject\EcomAgent
+.\scripts\smoke-e2e.ps1
+```
+
+脚本会自动检查 FAQ、查订单、查物流、取消订单确认、退款人工审核入口和人工接管入口。坐席审批、开始接管、结束接管等页面操作仍按下方清单手工验收。
+
 ## 2. 自动查订单
 
 在用户端 H5 发送：
