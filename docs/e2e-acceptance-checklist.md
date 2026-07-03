@@ -38,6 +38,19 @@ npm run dev:workstation
 - APP H5：`http://localhost:3002`
 - 坐席工作台：`http://localhost:3001`
 
+联调前可以先执行本地栈健康检查，确认后端健康接口和前端入口都已启动：
+
+```powershell
+cd D:\NewProject\EcomAgent
+.\scripts\check-local-stack.ps1
+```
+
+如果暂时没有启动 APP H5：
+
+```powershell
+.\scripts\check-local-stack.ps1 -SkipAppH5
+```
+
 服务启动后，可以先执行入口级烟测脚本：
 
 ```powershell

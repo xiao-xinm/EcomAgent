@@ -34,3 +34,44 @@ cd D:\NewProject\EcomAgent
 ```powershell
 .\scripts\smoke-e2e.ps1 -SkipOrderCancelDbSetup
 ```
+
+## check-local-stack.ps1
+
+`check-local-stack.ps1` 用于联调前快速确认本地服务是否都已启动。它只检查服务健康和前端入口，不执行业务请求，也不修改数据库。
+
+默认检查：
+
+- Gateway：`http://localhost:8080/api/health`
+- Agent Core：`http://localhost:8081/api/health`
+- Skill Engine：`http://localhost:8082/api/health`
+- Workbench：`http://localhost:8083/api/health`
+- Knowledge：`http://localhost:8084/api/health`
+- Notification：`http://localhost:8085/api/health`
+- 用户端 H5：`http://localhost:3000`
+- 坐席工作台：`http://localhost:3001`
+- APP H5：`http://localhost:3002`
+
+执行：
+
+```powershell
+cd D:\NewProject\EcomAgent
+.\scripts\check-local-stack.ps1
+```
+
+只检查后端：
+
+```powershell
+.\scripts\check-local-stack.ps1 -SkipFrontend
+```
+
+只检查前端：
+
+```powershell
+.\scripts\check-local-stack.ps1 -SkipBackend
+```
+
+未启动 APP H5 时跳过 `3002`：
+
+```powershell
+.\scripts\check-local-stack.ps1 -SkipAppH5
+```
