@@ -47,6 +47,20 @@ cd D:\NewProject\EcomAgent
 
 脚本会自动检查 FAQ、查订单、查物流、取消订单确认、退款人工审核入口和人工接管入口。坐席审批、开始接管、结束接管等页面操作仍按下方清单手工验收。
 
+也可以执行前端页面级 E2E。该脚本会启动用户端 H5 和坐席工作台，并 mock 后端接口验证页面契约，不要求启动 MySQL 或后端服务：
+
+```powershell
+cd D:\NewProject\EcomAgent\frontend
+npm run test:e2e
+```
+
+首次运行如提示缺少 Playwright 浏览器，先执行：
+
+```powershell
+cd D:\NewProject\EcomAgent\frontend
+npm run install:e2e-browsers
+```
+
 ## 2. 自动查订单
 
 在用户端 H5 发送：

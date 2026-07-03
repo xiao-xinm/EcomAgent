@@ -15,6 +15,13 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
+    "test:e2e:client-h5": "playwright test --project=client-h5-mobile",
+    "test:e2e:workstation": "playwright test --project=workstation-desktop",
+    "install:e2e-browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }
