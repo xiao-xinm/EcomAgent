@@ -196,6 +196,12 @@ export interface TakeoverFinishRequest {
   result?: Record<string, unknown>;
 }
 
+export interface TakeoverMessageRequest {
+  operatorId: string;
+  content: string;
+  payload?: Record<string, unknown>;
+}
+
 export interface InternalNoteRequest {
   operatorId: string;
   comment: string;

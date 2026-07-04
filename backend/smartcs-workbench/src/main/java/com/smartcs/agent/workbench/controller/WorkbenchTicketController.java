@@ -9,6 +9,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalDecisionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
@@ -129,6 +130,17 @@ public class WorkbenchTicketController {
             @Valid @RequestBody OperatorActionRequest request) {
         String traceId = TraceIds.newTraceId();
         return ApiResponse.success(ticketService.startTakeover(ticketId, request), traceId);
+    }
+
+    @PostMapping(
+            value = "/api/workbench/tickets/{ticketId}/takeover/messages",
+            consumes = APPLICATION_JSON_UTF8,
+            produces = APPLICATION_JSON_UTF8)
+    public ApiResponse<ActionResult> sendTakeoverMessage(
+            @PathVariable String ticketId,
+            @Valid @RequestBody TakeoverMessageRequest request) {
+        String traceId = TraceIds.newTraceId();
+        return ApiResponse.success(ticketService.sendTakeoverMessage(ticketId, request), traceId);
     }
 
     @PostMapping(

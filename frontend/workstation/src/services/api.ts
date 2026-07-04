@@ -8,6 +8,7 @@ import type {
   OperatorActionRequest,
   ApprovalDecisionRequest,
   TakeoverFinishRequest,
+  TakeoverMessageRequest,
   InternalNoteRequest,
   TicketQueryParams,
   ActionLogView,
@@ -102,5 +103,14 @@ export async function finishTakeover(
 ): Promise<ActionResult> {
   return unwrap(
     client.post(`/api/workbench/tickets/${ticketId}/takeover/finish`, body),
+  );
+}
+
+export async function sendTakeoverMessage(
+  ticketId: string,
+  body: TakeoverMessageRequest,
+): Promise<ActionResult> {
+  return unwrap(
+    client.post(`/api/workbench/tickets/${ticketId}/takeover/messages`, body),
   );
 }

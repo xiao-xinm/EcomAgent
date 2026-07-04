@@ -14,6 +14,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.MessageView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.WorkOrderView;
@@ -443,6 +444,44 @@ public class WorkbenchTicketService {
                 request.operatorId(), notificationData);
         ActionResult result = currentResult(ticketId, "人工接管已开始");
         logActionResult("人工接管开始完成", result, request.operatorId());
+        return result;
+    }
+
+    @Transactional
+    public ActionResult sendTakeoverMessage(String ticketId, TakeoverMessageRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        HumanTakeoverView takeover = findTakeover(ticketId)
+                .orElseThrow(() -> rejected("当前工单没有人工接管记录"));
+        if (!"IN_PROGRESS".equals(takeover.status())) {
+            throw rejected("只有人工接管中才能发送坐席消息");
+        }
+
+        String content = request.content().trim();
+        LOGGER.info(
+                "坐席发送人工消息 ticketId={} traceId={} takeoverId={} operatorId={} contentLength={}",
+                ticketId,
+                ticket.traceId(),
+                takeover.takeoverId(),
+                request.operatorId(),
+                content.length());
+
+        Map<String, Object> messageData = data(
+                "takeoverId", takeover.takeoverId(),
+                "takeoverStatus", takeover.status(),
+                "workOrderStatus", ticket.status(),
+                "payload", request.payload());
+        insertUserVisibleMessage(ticket, "HUMAN_AGENT", content, request.operatorId(),
+                "TAKEOVER_MESSAGE_SENT",
+                messageData);
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "TAKEOVER", content,
+                data("subAction", "MESSAGE_SENT", "takeoverId", takeover.takeoverId(), "payload", request.payload()));
+        insertAudit(ticket, request.operatorId(), "TAKEOVER_MESSAGE_SENT",
+                data("takeoverId", takeover.takeoverId(), "contentLength", content.length(), "payload", request.payload()));
+        publishNotificationEvent(ticket, "TAKEOVER_MESSAGE_SENT", "人工客服消息", content,
+                request.operatorId(), messageData);
+
+        ActionResult result = currentResult(ticketId, "人工消息已发送");
+        logActionResult("坐席发送人工消息完成", result, request.operatorId());
         return result;
     }
 

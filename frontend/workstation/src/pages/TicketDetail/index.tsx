@@ -23,6 +23,7 @@ import {
   LoginOutlined,
   LogoutOutlined,
   MessageOutlined,
+  SendOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -34,6 +35,7 @@ import {
   startTakeover,
   finishTakeover,
   addInternalNote,
+  sendTakeoverMessage,
 } from "../../services/api";
 import type { TicketDetail as TicketDetailType } from "../../types/workbench";
 import {
@@ -72,6 +74,8 @@ const TicketDetailPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [internalNote, setInternalNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
+  const [takeoverMessage, setTakeoverMessage] = useState("");
+  const [messageSending, setMessageSending] = useState(false);
 
   const loadDetail = useCallback(async () => {
     if (!ticketId) return;
@@ -169,6 +173,29 @@ const TicketDetailPage: React.FC = () => {
     }
   };
 
+  const handleSendTakeoverMessage = async () => {
+    const content = takeoverMessage.trim();
+    if (!content) {
+      message.warning("请输入要发送给用户的消息");
+      return;
+    }
+    setMessageSending(true);
+    try {
+      await sendTakeoverMessage(ticketId!, {
+        operatorId: DEFAULT_OPERATOR_ID,
+        content,
+        payload: { source: "ticket-detail" },
+      });
+      message.success("人工消息已发送");
+      setTakeoverMessage("");
+      await loadDetail();
+    } catch (err) {
+      message.error((err as Error).message || "人工消息发送失败");
+    } finally {
+      setMessageSending(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: 80 }}>
@@ -206,6 +233,7 @@ const TicketDetailPage: React.FC = () => {
     (!takeover || ["REQUESTED", "QUEUED", "ASSIGNED"].includes(takeover.status));
   const canFinishTakeover =
     !isTerminalTicket && takeover && takeover.status === "IN_PROGRESS";
+  const canSendTakeoverMessage = takeover?.status === "IN_PROGRESS";
 
   return (
     <div style={{ padding: 16 }}>
@@ -467,6 +495,37 @@ const TicketDetailPage: React.FC = () => {
               </Descriptions>
             </Card>
           )}
+
+          <Card title="人工消息" size="small" style={{ marginBottom: 16 }}>
+            <Space direction="vertical" style={{ width: "100%" }} size={12}>
+              <Input.TextArea
+                rows={3}
+                maxLength={500}
+                showCount
+                disabled={!canSendTakeoverMessage}
+                placeholder={
+                  canSendTakeoverMessage
+                    ? "输入要发送给用户的人工客服消息"
+                    : "开始人工接管后可发送消息"
+                }
+                value={takeoverMessage}
+                onChange={(e) => setTakeoverMessage(e.target.value)}
+              />
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                loading={messageSending}
+                disabled={!canSendTakeoverMessage}
+                onClick={handleSendTakeoverMessage}
+                block
+              >
+                发送给用户
+              </Button>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                消息会写入当前会话，用户端 H5 通过轮询看到。
+              </Text>
+            </Space>
+          </Card>
 
           <Card title="内部协作" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: "100%" }} size={12}>

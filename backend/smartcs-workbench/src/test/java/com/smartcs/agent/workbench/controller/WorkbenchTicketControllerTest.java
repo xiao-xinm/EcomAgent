@@ -10,6 +10,7 @@ import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
 import java.time.Instant;
@@ -119,5 +120,21 @@ class WorkbenchTicketControllerTest {
         assertThat(response.data()).isSameAs(result);
         assertThat(response.data().message()).isEqualTo("内部备注已记录");
         verify(ticketService).addInternalNote("wo_test", request);
+    }
+
+    @Test
+    void sendTakeoverMessageDelegatesToTicketService() {
+        WorkbenchTicketService ticketService = mock(WorkbenchTicketService.class);
+        WorkbenchTicketController controller = new WorkbenchTicketController(ticketService);
+        TakeoverMessageRequest request = new TakeoverMessageRequest("agent001", "我正在帮你核实", Map.of());
+        ActionResult result = new ActionResult("wo_test", "PROCESSING", null, "IN_PROGRESS", "人工消息已发送");
+        when(ticketService.sendTakeoverMessage("wo_test", request)).thenReturn(result);
+
+        ApiResponse<ActionResult> response = controller.sendTakeoverMessage("wo_test", request);
+
+        assertThat(response.code()).isEqualTo("0000");
+        assertThat(response.data()).isSameAs(result);
+        assertThat(response.data().takeoverStatus()).isEqualTo("IN_PROGRESS");
+        verify(ticketService).sendTakeoverMessage("wo_test", request);
     }
 }

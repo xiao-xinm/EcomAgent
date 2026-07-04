@@ -268,6 +268,16 @@ interface InternalNoteRequest {
 }
 ```
 
+### TakeoverMessageRequest
+
+```ts
+interface TakeoverMessageRequest {
+  operatorId: string;
+  content: string;
+  payload?: Record<string, unknown>;
+}
+```
+
 ## 4. 接口列表
 
 ### 4.1 健康检查
@@ -509,7 +519,48 @@ interface OperatorActionRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，提示人工客服已接入
 
-### 4.10 结束人工接管
+### 4.10 发送人工接管消息
+
+```http
+POST /api/workbench/tickets/{ticketId}/takeover/messages
+```
+
+请求：
+
+```ts
+interface TakeoverMessageRequest {
+  operatorId: string;
+  content: string;
+  payload?: Record<string, unknown>;
+}
+```
+
+示例：
+
+```json
+{
+  "operatorId": "agent_001",
+  "content": "我正在帮你核实订单状态，请稍等。",
+  "payload": {
+    "source": "ticket-detail"
+  }
+}
+```
+
+约束：
+
+- 仅当 `human_takeover.status = IN_PROGRESS` 时允许发送。
+- 消息写入 `cs_message`，角色为 `HUMAN_AGENT`。
+- 用户端 H5 / APP H5 继续通过 `GET /api/chat/sessions/{sessionId}/messages` 轮询看到该消息。
+- 同步写入 `work_order_action` 和 `audit_log`，用于坐席操作追踪。
+
+响应：
+
+```ts
+ApiResponse<ActionResult>
+```
+
+### 4.11 结束人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/finish

@@ -234,7 +234,7 @@ GET /api/chat/sessions/{sessionId}/messages?limit=100
 
 用于用户端 H5 拉取当前会话消息列表。`limit` 可选，默认 `100`，最大 `200`。
 
-消息列表会包含同一会话下的所有用户可见消息，包括 `USER`、`AGENT`、`SYSTEM` 和 `HUMAN_AGENT`。当坐席在 Workbench 完成审批通过、审批驳回、人工接入或人工处理结束时，后端会追加一条 `SYSTEM` 或 `HUMAN_AGENT` 消息，H5 通过本接口刷新即可看到人工处理结果。
+消息列表会包含同一会话下的所有用户可见消息，包括 `USER`、`AGENT`、`SYSTEM` 和 `HUMAN_AGENT`。当坐席在 Workbench 完成审批通过、审批驳回、人工接入、发送人工消息或人工处理结束时，后端会追加一条 `SYSTEM` 或 `HUMAN_AGENT` 消息，H5 通过本接口刷新即可看到人工处理进度和结果。
 
 响应：
 

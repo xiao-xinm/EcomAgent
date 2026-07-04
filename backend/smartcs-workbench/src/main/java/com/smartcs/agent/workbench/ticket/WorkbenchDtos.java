@@ -163,6 +163,13 @@ public final class WorkbenchDtos {
     ) {
     }
 
+    public record TakeoverMessageRequest(
+            @NotBlank String operatorId,
+            @NotBlank String content,
+            Map<String, Object> payload
+    ) {
+    }
+
     public record InternalNoteRequest(
             @NotBlank String operatorId,
             @NotBlank String comment,
