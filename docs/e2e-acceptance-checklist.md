@@ -145,6 +145,13 @@ APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `chan
 - 不创建人工工单
 - `我要退款` 仍必须进入 `HUMAN_REVIEW`，不能被 FAQ 分支拦截
 
+FAQ 未命中兜底可选验收：
+
+- 停用或删除相关 FAQ 后，发送一个知识类但无法命中的问题
+- 预期用户端收到换问法或转人工提示
+- 响应 metadata 中 `knowledgeFallback = true`
+- 回复包含“转人工客服”快捷动作，点击后进入 `HUMAN_TAKEOVER`
+
 ## 3. 修改地址确认
 
 在用户端 H5 发送：

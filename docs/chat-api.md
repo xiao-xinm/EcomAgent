@@ -75,7 +75,7 @@ interface ChatActionRequest {
   userId: string;
   channel?: string;
   actionId?: string;
-  actionType: 'CONFIRM' | 'CANCEL' | string;
+  actionType: 'CONFIRM' | 'CANCEL' | 'REQUEST_HUMAN' | string;
   content?: string;
   payload?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
@@ -176,6 +176,18 @@ interface ChatActionRequest {
 - 记录技能取消日志。
 - 将会话状态更新为 `COMPLETED`。
 - 返回“已取消本次操作”。
+
+### REQUEST_HUMAN
+
+用于用户在 Agent 回复中点击“转人工客服”。
+
+后端会：
+
+- 写入一条用户 `ACTION` 消息。
+- 创建 `HUMAN_TAKEOVER` 工单。
+- 创建人工接管记录。
+- 将会话状态更新为 `HUMAN_TAKEOVER`。
+- 返回一条 Agent 文本回复，`routeDecision = HUMAN_TAKEOVER`，`metadata.reasonCode = FAQ_USER_REQUEST_HUMAN`。
 
 ## 4. 查询会话状态
 

@@ -170,6 +170,14 @@ FAQ 命中后的用户回复应满足：
 - `metadata.knowledgeAnswerId` 存在
 - `metadata.knowledgeSource = faq-keyword-v1`
 
+FAQ 未命中或置信度低于 Agent Core 阈值时：
+
+- `metadata.knowledgeFallback = true`
+- `metadata.knowledgeMissReason = FAQ_NOT_MATCHED` 或 `FAQ_LOW_CONFIDENCE`
+- `metadata.knowledgeMissStrategy = REPHRASE_OR_REQUEST_HUMAN`
+- `quickActions` 会包含 `actionType = REQUEST_HUMAN` 的“转人工客服”按钮
+- 用户点击后会创建 `HUMAN_TAKEOVER` 工单和人工接管记录
+
 ## 本地验证命令
 
 ```powershell

@@ -190,6 +190,7 @@
 - 已新增 `knowledge_faq` 表脚本和初始 FAQ 数据：`infra/sql/09-knowledge-faq-management.sql`。
 - 已新增 FAQ 列表、新增、更新、状态变更接口，供后续知识库后台或运营工具接入。
 - FAQ 查询链路保持 `POST /api/knowledge/faq/query` 不变，优先读 MySQL，表未初始化或无可用数据时回退到内置 FAQ。
+- Agent Core 已对 FAQ 未命中或低置信度结果返回兜底 metadata，并提供 `REQUEST_HUMAN` 快捷动作创建人工接管工单。
 
 中间件要求：
 

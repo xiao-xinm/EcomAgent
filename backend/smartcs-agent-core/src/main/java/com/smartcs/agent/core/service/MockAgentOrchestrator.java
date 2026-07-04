@@ -39,6 +39,8 @@ import org.springframework.stereotype.Service;
 public class MockAgentOrchestrator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MockAgentOrchestrator.class);
+    private static final double FAQ_MIN_CONFIDENCE = 0.65D;
+    private static final String REQUEST_HUMAN_ACTION = "REQUEST_HUMAN";
 
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(\\d+(?:\\.\\d{1,2})?)\\s*(元|块|rmb|RMB)?");
     private static final Pattern REFUND_REASON_PATTERN =
@@ -231,6 +233,7 @@ public class MockAgentOrchestrator {
         AgentReply reply = switch (actionType) {
             case "CONFIRM" -> confirmPendingAction(traceId, actionMessageId, userId, session, request);
             case "CANCEL" -> cancelPendingAction(traceId, actionMessageId, userId, session, request);
+            case REQUEST_HUMAN_ACTION -> requestHumanTakeover(traceId, userId, session, request);
             default -> buildActionReply(
                     traceId,
                     session.sessionId(),
@@ -394,6 +397,51 @@ public class MockAgentOrchestrator {
                 Map.of("reasonCode", cancelDecision.reasonCode()));
     }
 
+    private AgentReply requestHumanTakeover(
+            String traceId,
+            String userId,
+            SessionSnapshot session,
+            ChatActionRequest request) {
+        RuleDecision takeoverDecision = new RuleDecision(
+                RiskLevel.L3,
+                RouteDecision.HUMAN_TAKEOVER,
+                "FAQ_USER_REQUEST_HUMAN",
+                "FAQ 未命中或低置信度后用户请求人工客服");
+        String intent = textOr(session.currentIntent(), "faq.query");
+        String ticketId = createWorkOrder(
+                traceId,
+                session.sessionId(),
+                userId,
+                intent,
+                takeoverDecision);
+        createWorkOrderAction(ticketId, traceId, "system", "CREATE", takeoverDecision.reason());
+        createHumanTakeover(
+                ticketId,
+                traceId,
+                session.sessionId(),
+                userId,
+                takeoverDecision,
+                actionContent(request, REQUEST_HUMAN_ACTION));
+        updateSessionState(session.sessionId(), "HUMAN_TAKEOVER", "HUMAN_TAKEOVER");
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("reasonCode", takeoverDecision.reasonCode());
+        metadata.put("sourceActionType", REQUEST_HUMAN_ACTION);
+        metadata.put("sourceIntent", intent);
+        return buildActionReply(
+                traceId,
+                session.sessionId(),
+                REQUEST_HUMAN_ACTION,
+                intent,
+                null,
+                ticketId,
+                takeoverDecision.riskLevel(),
+                takeoverDecision.routeDecision(),
+                "我已为你转人工客服" + suffixTicket(ticketId) + "，请稍等。",
+                List.of(),
+                metadata);
+    }
+
     private SkillExecutionRequest buildConfirmedSkillExecutionRequest(
             String traceId,
             String messageId,
@@ -545,6 +593,7 @@ public class MockAgentOrchestrator {
         return switch (actionType) {
             case "CONFIRM" -> "确认继续";
             case "CANCEL" -> "取消";
+            case REQUEST_HUMAN_ACTION -> "转人工客服";
             default -> actionType;
         };
     }
@@ -1128,7 +1177,15 @@ public class MockAgentOrchestrator {
                 ? List.of(
                         new QuickAction("确认继续", "confirm", "CONFIRM", actionPayload),
                         new QuickAction("取消", "cancel", "CANCEL", actionPayload))
-                : List.of();
+                : faqNeedsHumanFallback(faqResult)
+                        ? List.of(new QuickAction(
+                                "转人工客服",
+                                "request_human",
+                                REQUEST_HUMAN_ACTION,
+                                Map.of(
+                                        "sourceIntent", intentGuess.intent(),
+                                        "reasonCode", faqMissReason(faqResult))))
+                        : List.of();
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("intent", intentGuess.intent());
         metadata.put("confidence", intentGuess.confidence());
@@ -1151,6 +1208,11 @@ public class MockAgentOrchestrator {
             metadata.put("knowledgeConfidence", faqResult.confidence());
             metadata.put("knowledgeSource", faqResult.source());
             metadata.put("matchedKeywords", faqResult.matchedKeywords() == null ? List.of() : faqResult.matchedKeywords());
+            metadata.put("knowledgeFallback", faqNeedsHumanFallback(faqResult));
+            metadata.put("knowledgeMissReason", faqMissReason(faqResult));
+            metadata.put("knowledgeMissStrategy", faqNeedsHumanFallback(faqResult)
+                    ? "REPHRASE_OR_REQUEST_HUMAN"
+                    : "ANSWER");
         }
         return new AgentReply(
                 "r_" + UUID.randomUUID(),
@@ -1213,7 +1275,30 @@ public class MockAgentOrchestrator {
     }
 
     private String knowledgeAnswerMessage(FaqQueryResult faqResult) {
-        return faqResult == null ? null : faqResult.answer();
+        if (faqResult == null) {
+            return null;
+        }
+        if (faqNeedsHumanFallback(faqResult)) {
+            return "这个问题我暂时没有找到足够稳定的知识库答案。你可以换一种说法继续问，也可以点击“转人工客服”让坐席继续处理。";
+        }
+        return faqResult.answer();
+    }
+
+    private boolean faqNeedsHumanFallback(FaqQueryResult faqResult) {
+        return faqResult != null && (!faqResult.matched() || faqResult.confidence() < FAQ_MIN_CONFIDENCE);
+    }
+
+    private String faqMissReason(FaqQueryResult faqResult) {
+        if (faqResult == null) {
+            return "";
+        }
+        if (!faqResult.matched()) {
+            return "FAQ_NOT_MATCHED";
+        }
+        if (faqResult.confidence() < FAQ_MIN_CONFIDENCE) {
+            return "FAQ_LOW_CONFIDENCE";
+        }
+        return "";
     }
 
     private boolean hasHighAmount(String content) {
