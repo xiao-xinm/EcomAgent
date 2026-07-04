@@ -132,8 +132,22 @@ test('workstation ticket detail can add an internal note', async ({ page }) => {
     },
     takeover: null,
     messages: [],
-    actions: noteCreated
-      ? [
+    actions: [
+      {
+        actionId: 'wa_claim',
+        source: 'WORK_ORDER',
+        ticketId: 'wo_e2e_refund',
+        traceId,
+        operatorId: 'agent001',
+        actionType: 'ASSIGN',
+        beforeStatus: 'PENDING',
+        afterStatus: 'PROCESSING',
+        comment: '开始处理',
+        actionData: { beforeStatus: 'PENDING', afterStatus: 'PROCESSING' },
+        createdAt: '2026-06-25T10:01:00Z',
+      },
+      ...(noteCreated
+        ? [
           {
             actionId: 'wa_note',
             source: 'WORK_ORDER',
@@ -148,7 +162,8 @@ test('workstation ticket detail can add an internal note', async ({ page }) => {
             createdAt: '2026-06-25T10:05:00Z',
           },
         ]
-      : [],
+        : []),
+    ],
   })
 
   await page.route('**/api/workbench/tickets/wo_e2e_refund', async (route) => {
@@ -186,7 +201,14 @@ test('workstation ticket detail can add an internal note', async ({ page }) => {
   await page.getByRole('button', { name: '添加内部备注' }).click()
 
   await expect.poll(() => noteCalled).toBe(true)
+  await expect(page.getByText('审计时间线')).toBeVisible()
+  await expect(page.getByText('工单').first()).toBeVisible()
+  await expect(page.getByText('领取工单')).toBeVisible()
+  await expect(page.getByText('PENDING → PROCESSING')).toBeVisible()
+  await expect(page.getByText('内部备注').first()).toBeVisible()
   await expect(page.getByText('需要主管复核退款凭证').first()).toBeVisible()
+  await page.getByText('查看动作数据').nth(1).click()
+  await expect(page.getByText(/"noteType":\s+"INTERNAL"/)).toBeVisible()
 })
 
 test('workstation ticket detail can send takeover message to user', async ({ page }) => {
@@ -304,5 +326,6 @@ test('workstation ticket detail can send takeover message to user', async ({ pag
   await page.getByRole('button', { name: '发送给用户' }).click()
 
   await expect.poll(() => messageCalled).toBe(true)
+  await expect(page.getByText('发送人工消息')).toBeVisible()
   await expect(page.getByText('我正在帮你核实订单状态').first()).toBeVisible()
 })

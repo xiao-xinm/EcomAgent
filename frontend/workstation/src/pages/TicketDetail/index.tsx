@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Col,
+  Collapse,
   Descriptions,
   Empty,
   Input,
@@ -37,7 +38,10 @@ import {
   addInternalNote,
   sendTakeoverMessage,
 } from "../../services/api";
-import type { TicketDetail as TicketDetailType } from "../../types/workbench";
+import type {
+  ActionLogView,
+  TicketDetail as TicketDetailType,
+} from "../../types/workbench";
 import {
   WORK_ORDER_STATUS_MAP,
   APPROVAL_STATUS_MAP,
@@ -50,15 +54,65 @@ import {
 
 const { Title, Text } = Typography;
 
-const ACTION_TYPE_TEXT: Record<string, string> = {
-  ASSIGN: "领取工单",
-  APPROVE: "审批通过",
-  REJECT: "审批驳回",
-  TAKEOVER: "人工接管",
-  CLOSE: "关闭工单",
-  ESCALATE: "升级处理",
-  INTERNAL_NOTE: "内部备注",
+const ACTION_TYPE_META: Record<string, { text: string; color: string }> = {
+  CREATE: { text: "创建工单", color: "blue" },
+  ASSIGN: { text: "领取工单", color: "processing" },
+  CLAIM: { text: "领取审批", color: "processing" },
+  APPROVE: { text: "审批通过", color: "success" },
+  REJECT: { text: "审批驳回", color: "error" },
+  MODIFY_AND_APPROVE: { text: "修改并通过", color: "success" },
+  TAKEOVER: { text: "人工接管", color: "cyan" },
+  ESCALATE: { text: "升级处理", color: "warning" },
+  CLOSE: { text: "关闭工单", color: "default" },
+  CANCEL: { text: "取消", color: "default" },
+  EXPIRE: { text: "超时", color: "warning" },
+  COMMENT: { text: "审批备注", color: "gold" },
+  INTERNAL_NOTE: { text: "内部备注", color: "gold" },
 };
+
+const ACTION_SOURCE_META: Record<string, { text: string; color: string }> = {
+  WORK_ORDER: { text: "工单", color: "blue" },
+  APPROVAL: { text: "审批", color: "purple" },
+};
+
+function readStringValue(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function actionDisplay(action: ActionLogView) {
+  const subAction = readStringValue(action.actionData, "subAction");
+  if (action.actionType === "TAKEOVER" && subAction === "MESSAGE_SENT") {
+    return { text: "发送人工消息", color: "cyan" };
+  }
+  return ACTION_TYPE_META[action.actionType] || {
+    text: action.actionType,
+    color: "default",
+  };
+}
+
+function actionTimelineColor(action: ActionLogView) {
+  if (action.afterStatus === "APPROVED" || action.afterStatus === "RESOLVED") {
+    return "green";
+  }
+  if (action.afterStatus === "REJECTED" || action.afterStatus === "CANCELLED") {
+    return "red";
+  }
+  if (action.actionType === "INTERNAL_NOTE") {
+    return "gold";
+  }
+  if (action.actionType === "TAKEOVER") {
+    return "cyan";
+  }
+  return action.source === "APPROVAL" ? "purple" : "blue";
+}
+
+function actionDataJson(action: ActionLogView) {
+  if (!action.actionData || Object.keys(action.actionData).length === 0) {
+    return null;
+  }
+  return JSON.stringify(action.actionData, null, 2);
+}
 
 const TicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
@@ -575,46 +629,85 @@ const TicketDetailPage: React.FC = () => {
 
           {/* Action log timeline */}
           <Card
-            title={`操作日志 (${actions.length})`}
+            title={`审计时间线 (${actions.length})`}
             size="small"
+            extra={<Text type="secondary">按时间升序</Text>}
           >
             {actions.length === 0 ? (
               <Text type="secondary">暂无操作记录</Text>
             ) : (
               <Timeline
-                items={actions.map((action) => ({
-                  color:
-                    action.afterStatus === "APPROVED"
-                      ? "green"
-                      : action.afterStatus === "REJECTED"
-                        ? "red"
-                        : "blue",
-                  children: (
-                    <div>
+                items={actions.map((action) => {
+                  const actionMeta = actionDisplay(action);
+                  const sourceMeta = ACTION_SOURCE_META[action.source] || {
+                    text: action.source,
+                    color: "default",
+                  };
+                  const dataJson = actionDataJson(action);
+                  return {
+                    color: actionTimelineColor(action),
+                    children: (
                       <div>
-                        <Text strong>
-                          {ACTION_TYPE_TEXT[action.actionType] || action.actionType}
-                        </Text>
-                        {action.beforeStatus && action.afterStatus && (
-                          <Text type="secondary" style={{ marginLeft: 4 }}>
-                            {action.beforeStatus} → {action.afterStatus}
+                        <Space wrap size={[4, 4]} style={{ marginBottom: 4 }}>
+                          <Tag color={sourceMeta.color}>{sourceMeta.text}</Tag>
+                          <Tag color={actionMeta.color}>{actionMeta.text}</Tag>
+                          {action.beforeStatus && action.afterStatus && (
+                            <Tag>
+                              {action.beforeStatus} → {action.afterStatus}
+                            </Tag>
+                          )}
+                        </Space>
+                        <div>
+                          <Text strong>{action.operatorId}</Text>
+                          <Text
+                            type="secondary"
+                            style={{ fontSize: 12, marginLeft: 8 }}
+                          >
+                            {action.createdAt
+                              ? dayjs(action.createdAt).format("YYYY-MM-DD HH:mm:ss")
+                              : ""}
                           </Text>
+                        </div>
+                        {action.comment && (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 12,
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            {action.comment}
+                          </div>
+                        )}
+                        {dataJson && (
+                          <Collapse
+                            ghost
+                            size="small"
+                            style={{ marginTop: 4 }}
+                            items={[
+                              {
+                                key: `${action.actionId}-data`,
+                                label: "查看动作数据",
+                                children: (
+                                  <pre
+                                    style={{
+                                      margin: 0,
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                      fontSize: 12,
+                                    }}
+                                  >
+                                    {dataJson}
+                                  </pre>
+                                ),
+                              },
+                            ]}
+                          />
                         )}
                       </div>
-                      <div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {action.operatorId} ·{" "}
-                          {action.createdAt
-                            ? dayjs(action.createdAt).format("MM-DD HH:mm:ss")
-                            : ""}
-                        </Text>
-                      </div>
-                      {action.comment && (
-                        <div style={{ fontSize: 12 }}>{action.comment}</div>
-                      )}
-                    </div>
-                  ),
-                }))}
+                    ),
+                  };
+                })}
               />
             )}
           </Card>

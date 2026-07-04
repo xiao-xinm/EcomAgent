@@ -358,6 +358,14 @@ ApiResponse<ActionLogView[]>
 
 包含 `work_order_action` 与 `approval_action` 的合并时间线。
 
+前端坐席工作台应按审计视图展示：
+
+- 来源：`WORK_ORDER` 显示为工单，`APPROVAL` 显示为审批。
+- 动作：将 `ASSIGN`、`APPROVE`、`REJECT`、`TAKEOVER`、`INTERNAL_NOTE` 等转换为中文标签。
+- 状态流转：当 `beforeStatus` 和 `afterStatus` 同时存在时，展示 `beforeStatus -> afterStatus`。
+- 备注：展示 `comment`，用于坐席处理说明或内部协作记录。
+- 动作数据：`actionData` 保留为可展开 JSON，用于排查 payload、子动作和审计上下文。
+
 ### 4.5 添加内部备注
 
 ```http
