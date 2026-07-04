@@ -38,16 +38,26 @@ public class WorkbenchTicketController {
     public ApiResponse<PageResult<TicketSummary>> listTickets(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String routeDecision,
+            @RequestParam(required = false) String riskLevel,
+            @RequestParam(required = false) String intent,
+            @RequestParam(required = false) String priority,
             @RequestParam(required = false) String assignedAgent,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String createdAtFrom,
+            @RequestParam(required = false) String createdAtTo,
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "20") int pageSize) {
         String traceId = TraceIds.newTraceId();
         PageResult<TicketSummary> result = ticketService.listTickets(
                 status,
                 routeDecision,
+                riskLevel,
+                intent,
+                priority,
                 assignedAgent,
                 keyword,
+                createdAtFrom,
+                createdAtTo,
                 pageNo,
                 pageSize);
         return ApiResponse.success(result, traceId);

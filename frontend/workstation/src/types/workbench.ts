@@ -199,8 +199,13 @@ export interface TakeoverFinishRequest {
 export interface TicketQueryParams {
   status?: WorkOrderStatus;
   routeDecision?: RouteDecision;
+  riskLevel?: RiskLevel;
+  intent?: string;
+  priority?: Priority;
   assignedAgent?: string;
   keyword?: string;
+  createdAtFrom?: string;
+  createdAtTo?: string;
   pageNo?: number;
   pageSize?: number;
 }

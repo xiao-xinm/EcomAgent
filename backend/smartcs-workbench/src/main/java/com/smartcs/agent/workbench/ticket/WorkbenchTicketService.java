@@ -67,13 +67,27 @@ public class WorkbenchTicketService {
     public PageResult<TicketSummary> listTickets(
             String status,
             String routeDecision,
+            String riskLevel,
+            String intent,
+            String priority,
             String assignedAgent,
             String keyword,
+            String createdAtFrom,
+            String createdAtTo,
             int pageNo,
             int pageSize) {
         int normalizedPageNo = Math.max(pageNo, 1);
         int normalizedPageSize = Math.min(Math.max(pageSize, 1), 200);
-        SqlFilter filter = buildTicketFilter(status, routeDecision, assignedAgent, keyword);
+        SqlFilter filter = buildTicketFilter(
+                status,
+                routeDecision,
+                riskLevel,
+                intent,
+                priority,
+                assignedAgent,
+                keyword,
+                createdAtFrom,
+                createdAtTo);
 
         Long total = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM work_order w " + filter.whereSql(),
@@ -104,10 +118,16 @@ public class WorkbenchTicketService {
 
         long normalizedTotal = total == null ? 0 : total;
         LOGGER.info(
-                "查询工单列表 status={} routeDecision={} assignedAgent={} keywordPresent={} pageNo={} pageSize={} total={} returned={}",
+                "查询工单列表 status={} routeDecision={} riskLevel={} intent={} priority={} assignedAgent={} "
+                        + "createdAtFrom={} createdAtTo={} keywordPresent={} pageNo={} pageSize={} total={} returned={}",
                 status,
                 routeDecision,
+                riskLevel,
+                intent,
+                priority,
                 assignedAgent,
+                createdAtFrom,
+                createdAtTo,
                 hasText(keyword),
                 normalizedPageNo,
                 normalizedPageSize,
@@ -468,20 +488,49 @@ public class WorkbenchTicketService {
         return actionResult;
     }
 
-    private SqlFilter buildTicketFilter(String status, String routeDecision, String assignedAgent, String keyword) {
+    private SqlFilter buildTicketFilter(
+            String status,
+            String routeDecision,
+            String riskLevel,
+            String intent,
+            String priority,
+            String assignedAgent,
+            String keyword,
+            String createdAtFrom,
+            String createdAtTo) {
         StringBuilder where = new StringBuilder(" WHERE 1 = 1");
         List<Object> args = new ArrayList<>();
         if (hasText(status)) {
             where.append(" AND w.status = ?");
-            args.add(status);
+            args.add(status.trim());
         }
         if (hasText(routeDecision)) {
             where.append(" AND w.route_decision = ?");
-            args.add(routeDecision);
+            args.add(routeDecision.trim());
+        }
+        if (hasText(riskLevel)) {
+            where.append(" AND w.risk_level = ?");
+            args.add(riskLevel.trim());
+        }
+        if (hasText(intent)) {
+            where.append(" AND w.intent = ?");
+            args.add(intent.trim());
+        }
+        if (hasText(priority)) {
+            where.append(" AND w.priority = ?");
+            args.add(priority.trim());
         }
         if (hasText(assignedAgent)) {
             where.append(" AND w.assigned_agent = ?");
-            args.add(assignedAgent);
+            args.add(assignedAgent.trim());
+        }
+        if (hasText(createdAtFrom)) {
+            where.append(" AND w.created_at >= ?");
+            args.add(createdAtFrom.trim());
+        }
+        if (hasText(createdAtTo)) {
+            where.append(" AND w.created_at <= ?");
+            args.add(createdAtTo.trim());
         }
         if (hasText(keyword)) {
             String like = "%" + keyword.trim() + "%";

@@ -280,7 +280,12 @@ GET /api/workbench/tickets
 | --- | --- | --- |
 | `status` | 否 | 工单状态，如 `PENDING` |
 | `routeDecision` | 否 | 路由决策，如 `HUMAN_REVIEW` |
+| `riskLevel` | 否 | 风险等级，如 `L3` |
+| `intent` | 否 | 精确匹配意图，如 `refund.apply` |
+| `priority` | 否 | 优先级，如 `HIGH` |
 | `assignedAgent` | 否 | 坐席 ID |
+| `createdAtFrom` | 否 | 创建时间起始，建议格式 `YYYY-MM-DD HH:mm:ss` |
+| `createdAtTo` | 否 | 创建时间结束，建议格式 `YYYY-MM-DD HH:mm:ss` |
 | `keyword` | 否 | 模糊搜索 ticketId/sessionId/userId/intent |
 | `pageNo` | 否 | 默认 `1` |
 | `pageSize` | 否 | 默认 `20`，最大 `200` |
@@ -296,7 +301,7 @@ ApiResponse<PageResult<TicketSummary>>
 ```powershell
 Invoke-RestMethod `
   -Method Get `
-  -Uri "http://localhost:8083/api/workbench/tickets?status=PENDING&pageNo=1&pageSize=20"
+  -Uri "http://localhost:8083/api/workbench/tickets?status=PENDING&riskLevel=L3&intent=refund.apply&pageNo=1&pageSize=20"
 ```
 
 ### 4.3 工单详情

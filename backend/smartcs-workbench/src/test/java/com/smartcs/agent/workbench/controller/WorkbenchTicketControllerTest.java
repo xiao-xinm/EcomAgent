@@ -43,16 +43,49 @@ class WorkbenchTicketControllerTest {
                 null,
                 null);
         PageResult<TicketSummary> page = new PageResult<>(List.of(ticket), 1, 1, 20);
-        when(ticketService.listTickets("PENDING", "HUMAN_REVIEW", null, "refund", 1, 20)).thenReturn(page);
+        when(ticketService.listTickets(
+                "PENDING",
+                "HUMAN_REVIEW",
+                "L3",
+                "refund.apply",
+                "HIGH",
+                "agent001",
+                "refund",
+                "2026-07-01 00:00:00",
+                "2026-07-04 23:59:59",
+                1,
+                20)).thenReturn(page);
 
         ApiResponse<PageResult<TicketSummary>> response =
-                controller.listTickets("PENDING", "HUMAN_REVIEW", null, "refund", 1, 20);
+                controller.listTickets(
+                        "PENDING",
+                        "HUMAN_REVIEW",
+                        "L3",
+                        "refund.apply",
+                        "HIGH",
+                        "agent001",
+                        "refund",
+                        "2026-07-01 00:00:00",
+                        "2026-07-04 23:59:59",
+                        1,
+                        20);
 
         assertThat(response.code()).isEqualTo("0000");
         assertThat(response.traceId()).isNotBlank();
         assertThat(response.data().records()).containsExactly(ticket);
         assertThat(response.data().total()).isEqualTo(1);
-        verify(ticketService).listTickets("PENDING", "HUMAN_REVIEW", null, "refund", 1, 20);
+        verify(ticketService).listTickets(
+                "PENDING",
+                "HUMAN_REVIEW",
+                "L3",
+                "refund.apply",
+                "HIGH",
+                "agent001",
+                "refund",
+                "2026-07-01 00:00:00",
+                "2026-07-04 23:59:59",
+                1,
+                20);
     }
 
     @Test

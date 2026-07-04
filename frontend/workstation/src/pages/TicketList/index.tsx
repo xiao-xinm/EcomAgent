@@ -6,7 +6,13 @@ import type { ActionType, ProColumns } from "@ant-design/pro-components";
 import { ProTable } from "@ant-design/pro-components";
 import dayjs from "dayjs";
 import { fetchTickets, claimTicket } from "../../services/api";
-import type { TicketSummary, WorkOrderStatus, RouteDecision } from "../../types/workbench";
+import type {
+  TicketSummary,
+  WorkOrderStatus,
+  RouteDecision,
+  RiskLevel,
+  Priority,
+} from "../../types/workbench";
 import {
   WORK_ORDER_STATUS_MAP,
   RISK_LEVEL_MAP,
@@ -33,6 +39,31 @@ const routeOptions: { label: string; value: RouteDecision }[] = [
   { label: "人工审核", value: "HUMAN_REVIEW" },
   { label: "人工接管", value: "HUMAN_TAKEOVER" },
   { label: "拒绝", value: "REJECT" },
+];
+
+const riskLevelOptions: { label: string; value: RiskLevel }[] = [
+  { label: "L0 低风险", value: "L0" },
+  { label: "L1 自动执行", value: "L1" },
+  { label: "L2 需确认", value: "L2" },
+  { label: "L3 人工兜底", value: "L3" },
+];
+
+const priorityOptions: { label: string; value: Priority }[] = [
+  { label: "低", value: "LOW" },
+  { label: "普通", value: "NORMAL" },
+  { label: "高", value: "HIGH" },
+  { label: "紧急", value: "URGENT" },
+];
+
+const intentOptions = [
+  { label: "FAQ 问答", value: "faq.query" },
+  { label: "查询订单", value: "order.query" },
+  { label: "查询物流", value: "logistics.query" },
+  { label: "修改地址", value: "order.modify_address" },
+  { label: "取消订单", value: "order.cancel" },
+  { label: "退款申请", value: "refund.apply" },
+  { label: "换货申请", value: "exchange.apply" },
+  { label: "未知意图", value: "unknown" },
 ];
 
 const TicketList: React.FC = () => {
@@ -72,13 +103,15 @@ const TicketList: React.FC = () => {
       dataIndex: "intent",
       ellipsis: true,
       width: 140,
-      search: false,
+      valueType: "select",
+      fieldProps: { options: intentOptions, showSearch: true },
     },
     {
       title: "风险等级",
       dataIndex: "riskLevel",
       width: 90,
-      search: false,
+      valueType: "select",
+      fieldProps: { options: riskLevelOptions },
       render: (_, record) => {
         const cfg = RISK_LEVEL_MAP[record.riskLevel];
         return <Tag color={cfg?.color}>{cfg?.text || record.riskLevel}</Tag>;
@@ -108,7 +141,8 @@ const TicketList: React.FC = () => {
       title: "优先级",
       dataIndex: "priority",
       width: 80,
-      search: false,
+      valueType: "select",
+      fieldProps: { options: priorityOptions },
       render: (_, record) => {
         const cfg = PRIORITY_MAP[record.priority];
         return <Tag color={cfg?.color}>{cfg?.text || record.priority}</Tag>;
@@ -118,7 +152,7 @@ const TicketList: React.FC = () => {
       title: "坐席",
       dataIndex: "assignedAgent",
       width: 100,
-      search: false,
+      fieldProps: { placeholder: "输入坐席 ID" },
       render: (_, record) => record.assignedAgent || "-",
     },
     {
@@ -134,6 +168,19 @@ const TicketList: React.FC = () => {
       search: false,
       render: (_, record) =>
         record.createdAt ? dayjs(record.createdAt).format("YYYY-MM-DD HH:mm:ss") : "-",
+    },
+    {
+      title: "创建时间",
+      dataIndex: "createdAtRange",
+      valueType: "dateTimeRange",
+      hideInTable: true,
+      search: {
+        transform: (value) => ({
+          createdAtFrom: value?.[0],
+          createdAtTo: value?.[1],
+        }),
+      },
+      fieldProps: { placeholder: ["开始时间", "结束时间"] },
     },
     {
       title: "操作",
@@ -174,7 +221,13 @@ const TicketList: React.FC = () => {
             pageSize,
             status: rest.status as WorkOrderStatus | undefined,
             routeDecision: rest.routeDecision as RouteDecision | undefined,
+            riskLevel: rest.riskLevel as RiskLevel | undefined,
+            intent: rest.intent as string | undefined,
+            priority: rest.priority as Priority | undefined,
+            assignedAgent: rest.assignedAgent as string | undefined,
             keyword: rest.keyword as string | undefined,
+            createdAtFrom: rest.createdAtFrom as string | undefined,
+            createdAtTo: rest.createdAtTo as string | undefined,
           });
           return {
             data: result.records,

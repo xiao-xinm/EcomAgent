@@ -73,6 +73,9 @@ test('workstation renders ticket list and can claim a pending ticket', async ({ 
 
   await expect(page.getByText('人工坐席工作台')).toBeVisible()
   await expect(page.getByRole('main').getByText('工单列表')).toBeVisible()
+  await expect(page.getByText('风险等级').first()).toBeVisible()
+  await expect(page.getByText('优先级').first()).toBeVisible()
+  await expect(page.getByText('坐席').first()).toBeVisible()
   await expect(page.getByText('wo_e2e_refund')).toBeVisible()
   await expect(page.getByText('order.refund')).toBeVisible()
   await expect(page.getByText('人工审核')).toBeVisible()
