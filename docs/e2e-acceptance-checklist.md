@@ -123,6 +123,12 @@ APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `chan
 
 ## 2.5 FAQ 知识库自动问答
 
+前置条件：
+
+- 如需验证 MySQL FAQ 数据源，先执行 `infra/sql/09-knowledge-faq-management.sql`。
+- Knowledge 服务 `8084` 已启动。
+- 可选检查：`GET http://localhost:8084/api/knowledge/faq?pageNo=1&pageSize=20&status=ACTIVE` 应返回 FAQ 列表。
+
 在用户端 H5 发送：
 
 ```text

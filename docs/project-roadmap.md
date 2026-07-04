@@ -170,7 +170,7 @@
 
 ### Phase 5. 知识库能力增强
 
-状态：待开始。
+状态：进行中。
 
 目标：
 
@@ -184,6 +184,12 @@
 3. Agent Core 对知识类问题返回来源和置信度。
 4. 增加未命中策略：低置信度转人工或提示换问法。
 5. 再评估向量检索和 RAG。
+
+当前进展：
+
+- 已新增 `knowledge_faq` 表脚本和初始 FAQ 数据：`infra/sql/09-knowledge-faq-management.sql`。
+- 已新增 FAQ 列表、新增、更新、状态变更接口，供后续知识库后台或运营工具接入。
+- FAQ 查询链路保持 `POST /api/knowledge/faq/query` 不变，优先读 MySQL，表未初始化或无可用数据时回退到内置 FAQ。
 
 中间件要求：
 
