@@ -141,7 +141,22 @@ test('workstation ticket detail can add an internal note', async ({ page }) => {
       priority: 'HIGH',
       assignedReviewer: 'agent001',
       riskReason: '退款需人工审核',
-      requestPayload: {},
+      requestPayload: {
+        businessType: 'REFUND',
+        orderNo: 'E2E-ORDER-1002',
+        refundReason: '商品质量问题',
+        refundAmount: 99.5,
+        evidencePlaceholders: [
+          {
+            type: 'IMAGE',
+            label: '退款凭证',
+            required: false,
+            status: 'NOT_PROVIDED',
+          },
+        ],
+        userRequest: '订单 E2E-ORDER-1002 商品破损，我要退款 99.5 元',
+        mock: true,
+      },
       contextSnapshot: {},
       approvalResult: {},
       expireAt: null,
@@ -215,6 +230,11 @@ test('workstation ticket detail can add an internal note', async ({ page }) => {
 
   await page.goto('/tickets/wo_e2e_refund')
 
+  await expect(page.getByText('退款申请')).toBeVisible()
+  await expect(page.getByText('E2E-ORDER-1002', { exact: true })).toBeVisible()
+  await expect(page.getByText('商品质量问题')).toBeVisible()
+  await expect(page.getByText('99.5 元', { exact: true })).toBeVisible()
+  await expect(page.getByText('退款凭证（选填，NOT_PROVIDED）')).toBeVisible()
   await expect(page.getByText('内部协作')).toBeVisible()
   await page.getByPlaceholder('记录仅坐席可见的处理备注、协作信息或后续跟进点').fill('需要主管复核退款凭证')
   await page.getByRole('button', { name: '添加内部备注' }).click()

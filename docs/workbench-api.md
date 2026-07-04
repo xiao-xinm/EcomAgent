@@ -206,6 +206,32 @@ interface ApprovalTaskView {
 }
 ```
 
+当 `approvalType = "REFUND"` 时，`requestPayload` 使用退款申请上下文结构：
+
+```ts
+interface RefundRequestPayload {
+  businessType: "REFUND";
+  content: string;
+  orderNo?: string;
+  refundReason?: string;
+  refundAmount?: number | string;
+  evidencePlaceholders: Array<{
+    type: "IMAGE" | "FILE" | string;
+    label: string;
+    required: boolean;
+    status: "NOT_PROVIDED" | "UPLOADED" | string;
+  }>;
+  userRequest: string;
+  mock?: boolean;
+}
+```
+
+说明：
+
+- `orderNo`、`refundReason`、`refundAmount` 当前由 Agent Core 从用户原始诉求中做轻量提取，无法识别时允许为空。
+- `evidencePlaceholders` 仅表示坐席端需要看到的凭证占位，不代表已上传真实凭证。
+- 当前阶段仍不调用真实支付、退款或订单系统，审批结果只完成工单流转和用户消息回写。
+
 ### HumanTakeoverView
 
 ```ts

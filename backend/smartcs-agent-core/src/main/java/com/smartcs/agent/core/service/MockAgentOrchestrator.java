@@ -41,6 +41,8 @@ public class MockAgentOrchestrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(MockAgentOrchestrator.class);
 
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(\\d+(?:\\.\\d{1,2})?)\\s*(元|块|rmb|RMB)?");
+    private static final Pattern REFUND_REASON_PATTERN =
+            Pattern.compile("(?:原因|理由|因为|由于)[:：是为\\s]*([^，。,.；;\\s]+)");
     private static final Pattern ORDER_NO_PATTERN =
             Pattern.compile("(?i)(?:订单号|订单|order)\\s*[#：:=-]?\\s*([A-Z0-9][A-Z0-9-]{5,})");
 
@@ -805,6 +807,7 @@ public class MockAgentOrchestrator {
             String content) {
         String approvalId = "ap_" + UUID.randomUUID();
         String approvalType = approvalType(intent);
+        Map<String, Object> requestPayload = buildApprovalRequestPayload(intent, content, approvalType);
         jdbcTemplate.update(
                 """
                 INSERT INTO approval_task (
@@ -823,7 +826,7 @@ public class MockAgentOrchestrator {
                 decision.riskLevel().name(),
                 decision.routeDecision().name(),
                 decision.reason(),
-                json(Map.of("content", content)),
+                json(requestPayload),
                 json(Map.of("mock", true, "ticketId", ticketId)),
                 timestamp(Instant.now().plus(2, ChronoUnit.HOURS)));
         jdbcTemplate.update(
@@ -848,6 +851,30 @@ public class MockAgentOrchestrator {
                 userId,
                 intent,
                 approvalType);
+    }
+
+    // 退款当前只沉淀人工审核上下文，不触发真实退款或支付系统调用。
+    private Map<String, Object> buildApprovalRequestPayload(String intent, String content, String approvalType) {
+        if ("refund.apply".equals(intent)) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("businessType", approvalType);
+            payload.put("content", textOr(content, ""));
+            payload.put("orderNo", extractOrderNo(content));
+            payload.put("refundReason", extractRefundReason(content));
+            BigDecimal amount = extractAmount(content);
+            if (amount != null) {
+                payload.put("refundAmount", amount);
+            }
+            payload.put("evidencePlaceholders", List.of(data(
+                    "type", "IMAGE",
+                    "label", "退款凭证",
+                    "required", false,
+                    "status", "NOT_PROVIDED")));
+            payload.put("userRequest", textOr(content, ""));
+            payload.put("mock", true);
+            return payload;
+        }
+        return data("businessType", approvalType, "content", content, "mock", true);
     }
 
     private void createHumanTakeover(
@@ -933,6 +960,30 @@ public class MockAgentOrchestrator {
     private String extractOrderNo(String content) {
         Matcher matcher = ORDER_NO_PATTERN.matcher(content == null ? "" : content);
         return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private String extractRefundReason(String content) {
+        Matcher matcher = REFUND_REASON_PATTERN.matcher(content == null ? "" : content);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        String normalized = content == null ? "" : content;
+        if (containsAny(normalized, "质量", "坏", "破损", "瑕疵")) {
+            return "商品质量问题";
+        }
+        if (containsAny(normalized, "不想要", "买错", "拍错")) {
+            return "用户不想要";
+        }
+        if (containsAny(normalized, "没收到", "未收到", "丢件")) {
+            return "未收到商品";
+        }
+        return "";
+    }
+
+    private BigDecimal extractAmount(String content) {
+        String amountText = ORDER_NO_PATTERN.matcher(content == null ? "" : content).replaceAll(" ");
+        Matcher matcher = AMOUNT_PATTERN.matcher(amountText);
+        return matcher.find() ? new BigDecimal(matcher.group(1)) : null;
     }
 
     private void insertSkillExecutionLog(
@@ -1197,6 +1248,17 @@ public class MockAgentOrchestrator {
 
     private Timestamp timestamp(Instant instant) {
         return Timestamp.from(instant);
+    }
+
+    private Map<String, Object> data(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            Object value = pairs[i + 1];
+            if (value != null) {
+                map.put((String) pairs[i], value);
+            }
+        }
+        return map;
     }
 
     private String json(Object value) {

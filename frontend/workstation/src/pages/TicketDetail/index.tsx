@@ -40,6 +40,7 @@ import {
 } from "../../services/api";
 import type {
   ActionLogView,
+  ApprovalTaskView,
   TicketDetail as TicketDetailType,
 } from "../../types/workbench";
 import {
@@ -112,6 +113,60 @@ function actionDataJson(action: ActionLogView) {
     return null;
   }
   return JSON.stringify(action.actionData, null, 2);
+}
+
+function payloadText(payload: Record<string, unknown>, key: string) {
+  const value = payload[key];
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+}
+
+function textOrDash(value: string) {
+  return value || "-";
+}
+
+function refundAmountText(payload: Record<string, unknown>) {
+  const value = payload.refundAmount;
+  if (typeof value === "number") {
+    return `${value} 元`;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return `${value.trim()} 元`;
+  }
+  return "-";
+}
+
+function evidencePlaceholderText(payload: Record<string, unknown>) {
+  const value = payload.evidencePlaceholders;
+  if (!Array.isArray(value) || value.length === 0) {
+    return "-";
+  }
+
+  const items = value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return String(item || "");
+      }
+      const record = item as Record<string, unknown>;
+      const label = payloadText(record, "label") || "凭证";
+      const required = record.required === true ? "必填" : "选填";
+      const status = payloadText(record, "status") || "UNKNOWN";
+      return `${label}（${required}，${status}）`;
+    })
+    .filter(Boolean);
+
+  return items.length > 0 ? items.join("；") : "-";
+}
+
+function isRefundApproval(
+  approval?: ApprovalTaskView | null,
+): approval is ApprovalTaskView {
+  return approval?.approvalType === "REFUND";
 }
 
 const TicketDetailPage: React.FC = () => {
@@ -506,6 +561,36 @@ const TicketDetailPage: React.FC = () => {
                   {approval.createdAt
                     ? dayjs(approval.createdAt).format("YYYY-MM-DD HH:mm:ss")
                     : "-"}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          )}
+
+          {/* 退款审核上下文只展示工单字段，不代表已经执行真实退款。 */}
+          {isRefundApproval(approval) && (
+            <Card
+              title="退款申请"
+              size="small"
+              style={{ marginBottom: 16 }}
+            >
+              <Descriptions column={1} size="small" bordered>
+                <Descriptions.Item label="订单号">
+                  {textOrDash(payloadText(approval.requestPayload, "orderNo"))}
+                </Descriptions.Item>
+                <Descriptions.Item label="退款原因">
+                  {textOrDash(payloadText(approval.requestPayload, "refundReason"))}
+                </Descriptions.Item>
+                <Descriptions.Item label="退款金额">
+                  {refundAmountText(approval.requestPayload)}
+                </Descriptions.Item>
+                <Descriptions.Item label="凭证占位">
+                  {evidencePlaceholderText(approval.requestPayload)}
+                </Descriptions.Item>
+                <Descriptions.Item label="用户诉求">
+                  {textOrDash(
+                    payloadText(approval.requestPayload, "userRequest") ||
+                      payloadText(approval.requestPayload, "content"),
+                  )}
                 </Descriptions.Item>
               </Descriptions>
             </Card>
