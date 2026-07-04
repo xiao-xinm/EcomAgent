@@ -232,6 +232,33 @@ interface RefundRequestPayload {
 - `evidencePlaceholders` 仅表示坐席端需要看到的凭证占位，不代表已上传真实凭证。
 - 当前阶段仍不调用真实支付、退款或订单系统，审批结果只完成工单流转和用户消息回写。
 
+当 `approvalType = "EXCHANGE"` 时，`requestPayload` 使用换货申请上下文结构：
+
+```ts
+interface ExchangeRequestPayload {
+  businessType: "EXCHANGE";
+  content: string;
+  orderNo?: string;
+  productName?: string;
+  exchangeReason?: string;
+  expectedHandling?: string;
+  evidencePlaceholders: Array<{
+    type: "IMAGE" | "FILE" | string;
+    label: string;
+    required: boolean;
+    status: "NOT_PROVIDED" | "UPLOADED" | string;
+  }>;
+  userRequest: string;
+  mock?: boolean;
+}
+```
+
+说明：
+
+- `orderNo`、`productName`、`exchangeReason`、`expectedHandling` 当前由 Agent Core 从用户原始诉求中做轻量提取，无法识别时允许为空。
+- `evidencePlaceholders` 仅表示坐席端需要看到的换货凭证占位，不代表已上传真实凭证。
+- 当前阶段仍不调用真实仓储、物流或换货系统，审批结果只完成工单流转和用户消息回写。
+
 ### HumanTakeoverView
 
 ```ts

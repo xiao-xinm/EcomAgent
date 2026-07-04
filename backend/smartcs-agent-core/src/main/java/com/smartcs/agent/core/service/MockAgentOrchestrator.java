@@ -43,6 +43,10 @@ public class MockAgentOrchestrator {
     private static final Pattern AMOUNT_PATTERN = Pattern.compile("(\\d+(?:\\.\\d{1,2})?)\\s*(元|块|rmb|RMB)?");
     private static final Pattern REFUND_REASON_PATTERN =
             Pattern.compile("(?:原因|理由|因为|由于)[:：是为\\s]*([^，。,.；;\\s]+)");
+    private static final Pattern EXCHANGE_REASON_PATTERN =
+            Pattern.compile("(?:原因|理由|因为|由于)[:：是为\\s]*([^，。,.；;\\s]+)");
+    private static final Pattern PRODUCT_PATTERN =
+            Pattern.compile("(?i)(?:商品|产品|货品|sku|SKU)[:：是为\\s]*([^，。,.；;\\s]+)");
     private static final Pattern ORDER_NO_PATTERN =
             Pattern.compile("(?i)(?:订单号|订单|order)\\s*[#：:=-]?\\s*([A-Z0-9][A-Z0-9-]{5,})");
 
@@ -853,7 +857,7 @@ public class MockAgentOrchestrator {
                 approvalType);
     }
 
-    // 退款当前只沉淀人工审核上下文，不触发真实退款或支付系统调用。
+    // 敏感业务当前只沉淀人工审核上下文，不触发真实退款、换货或仓储系统调用。
     private Map<String, Object> buildApprovalRequestPayload(String intent, String content, String approvalType) {
         if ("refund.apply".equals(intent)) {
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -868,6 +872,23 @@ public class MockAgentOrchestrator {
             payload.put("evidencePlaceholders", List.of(data(
                     "type", "IMAGE",
                     "label", "退款凭证",
+                    "required", false,
+                    "status", "NOT_PROVIDED")));
+            payload.put("userRequest", textOr(content, ""));
+            payload.put("mock", true);
+            return payload;
+        }
+        if ("exchange.apply".equals(intent)) {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("businessType", approvalType);
+            payload.put("content", textOr(content, ""));
+            payload.put("orderNo", extractOrderNo(content));
+            payload.put("productName", extractProductName(content));
+            payload.put("exchangeReason", extractExchangeReason(content));
+            payload.put("expectedHandling", extractExpectedHandling(content));
+            payload.put("evidencePlaceholders", List.of(data(
+                    "type", "IMAGE",
+                    "label", "换货凭证",
                     "required", false,
                     "status", "NOT_PROVIDED")));
             payload.put("userRequest", textOr(content, ""));
@@ -984,6 +1005,49 @@ public class MockAgentOrchestrator {
         String amountText = ORDER_NO_PATTERN.matcher(content == null ? "" : content).replaceAll(" ");
         Matcher matcher = AMOUNT_PATTERN.matcher(amountText);
         return matcher.find() ? new BigDecimal(matcher.group(1)) : null;
+    }
+
+    private String extractProductName(String content) {
+        Matcher matcher = PRODUCT_PATTERN.matcher(content == null ? "" : content);
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private String extractExchangeReason(String content) {
+        Matcher matcher = EXCHANGE_REASON_PATTERN.matcher(content == null ? "" : content);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        String normalized = content == null ? "" : content;
+        if (containsAny(normalized, "尺码", "码数", "大小不合适")) {
+            return "尺码不合适";
+        }
+        if (containsAny(normalized, "颜色", "色差")) {
+            return "颜色不符合预期";
+        }
+        if (containsAny(normalized, "质量", "坏", "破损", "瑕疵")) {
+            return "商品质量问题";
+        }
+        if (containsAny(normalized, "发错", "错发")) {
+            return "商家发错货";
+        }
+        return "";
+    }
+
+    private String extractExpectedHandling(String content) {
+        String normalized = content == null ? "" : content;
+        if (containsAny(normalized, "大一码", "小一码", "换码", "尺码")) {
+            return "更换尺码";
+        }
+        if (containsAny(normalized, "换颜色", "颜色")) {
+            return "更换颜色";
+        }
+        if (containsAny(normalized, "同款", "原款", "换一个")) {
+            return "更换同款";
+        }
+        if (containsAny(normalized, "补发")) {
+            return "补发商品";
+        }
+        return "";
     }
 
     private void insertSkillExecutionLog(

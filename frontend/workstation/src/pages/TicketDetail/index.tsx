@@ -169,6 +169,12 @@ function isRefundApproval(
   return approval?.approvalType === "REFUND";
 }
 
+function isExchangeApproval(
+  approval?: ApprovalTaskView | null,
+): approval is ApprovalTaskView {
+  return approval?.approvalType === "EXCHANGE";
+}
+
 const TicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
@@ -582,6 +588,39 @@ const TicketDetailPage: React.FC = () => {
                 </Descriptions.Item>
                 <Descriptions.Item label="退款金额">
                   {refundAmountText(approval.requestPayload)}
+                </Descriptions.Item>
+                <Descriptions.Item label="凭证占位">
+                  {evidencePlaceholderText(approval.requestPayload)}
+                </Descriptions.Item>
+                <Descriptions.Item label="用户诉求">
+                  {textOrDash(
+                    payloadText(approval.requestPayload, "userRequest") ||
+                      payloadText(approval.requestPayload, "content"),
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          )}
+
+          {/* 换货审核上下文只展示工单字段，不代表已经执行真实换货。 */}
+          {isExchangeApproval(approval) && (
+            <Card
+              title="换货申请"
+              size="small"
+              style={{ marginBottom: 16 }}
+            >
+              <Descriptions column={1} size="small" bordered>
+                <Descriptions.Item label="订单号">
+                  {textOrDash(payloadText(approval.requestPayload, "orderNo"))}
+                </Descriptions.Item>
+                <Descriptions.Item label="商品">
+                  {textOrDash(payloadText(approval.requestPayload, "productName"))}
+                </Descriptions.Item>
+                <Descriptions.Item label="换货原因">
+                  {textOrDash(payloadText(approval.requestPayload, "exchangeReason"))}
+                </Descriptions.Item>
+                <Descriptions.Item label="期望处理">
+                  {textOrDash(payloadText(approval.requestPayload, "expectedHandling"))}
                 </Descriptions.Item>
                 <Descriptions.Item label="凭证占位">
                   {evidencePlaceholderText(approval.requestPayload)}

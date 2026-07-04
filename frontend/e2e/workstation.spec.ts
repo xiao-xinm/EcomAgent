@@ -250,6 +250,88 @@ test('workstation ticket detail can add an internal note', async ({ page }) => {
   await expect(page.getByText(/"noteType":\s+"INTERNAL"/)).toBeVisible()
 })
 
+test('workstation ticket detail renders exchange request context', async ({ page }) => {
+  const ticketDetail = {
+    ticket: {
+      ticketId: 'wo_e2e_exchange',
+      traceId,
+      sessionId: 's_e2e_exchange',
+      userId: 'u1001',
+      intent: 'exchange.apply',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_REVIEW',
+      status: 'PROCESSING',
+      priority: 'HIGH',
+      assignedAgent: 'agent001',
+      reason: '换货申请需要人工审核',
+      contextSnapshot: {},
+      resolution: {},
+      slaDeadline: null,
+      createdAt: '2026-06-25T10:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+      resolvedAt: null,
+    },
+    approval: {
+      approvalId: 'ap_e2e_exchange',
+      ticketId: 'wo_e2e_exchange',
+      traceId,
+      sessionId: 's_e2e_exchange',
+      userId: 'u1001',
+      intent: 'exchange.apply',
+      approvalType: 'EXCHANGE',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_REVIEW',
+      status: 'CLAIMED',
+      priority: 'HIGH',
+      assignedReviewer: 'agent001',
+      riskReason: '换货需人工审核',
+      requestPayload: {
+        businessType: 'EXCHANGE',
+        orderNo: 'E2E-ORDER-2002',
+        productName: '运动鞋',
+        exchangeReason: '尺码不合适',
+        expectedHandling: '更换尺码',
+        evidencePlaceholders: [
+          {
+            type: 'IMAGE',
+            label: '换货凭证',
+            required: false,
+            status: 'NOT_PROVIDED',
+          },
+        ],
+        userRequest: '订单 E2E-ORDER-2002 商品 运动鞋 尺码小了，想换大一码',
+        mock: true,
+      },
+      contextSnapshot: {},
+      approvalResult: {},
+      expireAt: null,
+      createdAt: '2026-06-25T10:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+      completedAt: null,
+    },
+    takeover: null,
+    messages: [],
+    actions: [],
+  }
+
+  await page.route('**/api/workbench/tickets/wo_e2e_exchange', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse(ticketDetail)),
+    })
+  })
+
+  await page.goto('/tickets/wo_e2e_exchange')
+
+  await expect(page.getByText('换货申请', { exact: true })).toBeVisible()
+  await expect(page.getByText('E2E-ORDER-2002', { exact: true })).toBeVisible()
+  await expect(page.getByText('运动鞋', { exact: true })).toBeVisible()
+  await expect(page.getByText('尺码不合适')).toBeVisible()
+  await expect(page.getByText('更换尺码')).toBeVisible()
+  await expect(page.getByText('换货凭证（选填，NOT_PROVIDED）')).toBeVisible()
+})
+
 test('workstation ticket detail can send takeover message to user', async ({ page }) => {
   let messageCalled = false
   let messageCreated = false
