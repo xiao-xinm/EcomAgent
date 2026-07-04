@@ -10,6 +10,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalDecisionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalTaskView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.HumanTakeoverView;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.MessageView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
@@ -193,6 +194,31 @@ public class WorkbenchTicketService {
                 ticketId);
         LOGGER.info("查询工单操作日志 ticketId={} count={}", ticketId, actions.size());
         return actions;
+    }
+
+    @Transactional
+    public ActionResult addInternalNote(String ticketId, InternalNoteRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        String note = request.comment().trim();
+        LOGGER.info(
+                "坐席添加内部备注 ticketId={} traceId={} operatorId={} commentLength={}",
+                ticketId,
+                ticket.traceId(),
+                request.operatorId(),
+                note.length());
+
+        // 内部备注只写入坐席侧操作记录和审计日志，不回写用户会话消息，避免用户端误以为有新的客服回复。
+        Map<String, Object> noteData = data(
+                "noteType", "INTERNAL",
+                "payload", request.payload());
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "INTERNAL_NOTE", note, noteData);
+        insertAudit(ticket, request.operatorId(), "WORK_ORDER_INTERNAL_NOTE", data(
+                "comment", note,
+                "payload", request.payload()));
+
+        ActionResult result = currentResult(ticketId, "内部备注已记录");
+        logActionResult("添加内部备注完成", result, request.operatorId());
+        return result;
     }
 
     @Transactional

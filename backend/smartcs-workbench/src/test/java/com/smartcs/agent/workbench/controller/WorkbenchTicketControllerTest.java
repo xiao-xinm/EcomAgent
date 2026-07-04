@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
@@ -102,5 +103,21 @@ class WorkbenchTicketControllerTest {
         assertThat(response.data()).isSameAs(result);
         assertThat(response.data().workOrderStatus()).isEqualTo("ASSIGNED");
         verify(ticketService).claim("wo_test", request);
+    }
+
+    @Test
+    void addInternalNoteDelegatesToTicketService() {
+        WorkbenchTicketService ticketService = mock(WorkbenchTicketService.class);
+        WorkbenchTicketController controller = new WorkbenchTicketController(ticketService);
+        InternalNoteRequest request = new InternalNoteRequest("agent001", "用户要求主管复核", Map.of("visibleToUser", false));
+        ActionResult result = new ActionResult("wo_test", "PROCESSING", "CLAIMED", null, "内部备注已记录");
+        when(ticketService.addInternalNote("wo_test", request)).thenReturn(result);
+
+        ApiResponse<ActionResult> response = controller.addInternalNote("wo_test", request);
+
+        assertThat(response.code()).isEqualTo("0000");
+        assertThat(response.data()).isSameAs(result);
+        assertThat(response.data().message()).isEqualTo("内部备注已记录");
+        verify(ticketService).addInternalNote("wo_test", request);
     }
 }

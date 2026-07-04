@@ -237,7 +237,7 @@ interface ActionLogView {
   ticketId: string;
   traceId: string;
   operatorId: string;
-  actionType: string;
+  actionType: string; // 工单内部备注使用 INTERNAL_NOTE
   beforeStatus?: string | null;
   afterStatus?: string | null;
   comment?: string | null;
@@ -255,6 +255,16 @@ interface ActionResult {
   approvalStatus?: ApprovalStatus | null;
   takeoverStatus?: TakeoverStatus | null;
   message: string;
+}
+```
+
+### InternalNoteRequest
+
+```ts
+interface InternalNoteRequest {
+  operatorId: string;
+  comment: string;
+  payload?: Record<string, unknown>;
 }
 ```
 
@@ -338,7 +348,53 @@ ApiResponse<ActionLogView[]>
 
 包含 `work_order_action` 与 `approval_action` 的合并时间线。
 
-### 4.5 领取工单
+### 4.5 添加内部备注
+
+```http
+POST /api/workbench/tickets/{ticketId}/notes
+```
+
+请求：
+
+```ts
+interface InternalNoteRequest {
+  operatorId: string;
+  comment: string;
+  payload?: Record<string, unknown>;
+}
+```
+
+示例：
+
+```json
+{
+  "operatorId": "agent_001",
+  "comment": "用户要求主管复核退款凭证",
+  "payload": {
+    "source": "ticket-detail"
+  }
+}
+```
+
+效果：
+
+- `work_order_action` 新增一条 `INTERNAL_NOTE` 操作记录。
+- `audit_log` 新增一条 `WORK_ORDER_INTERNAL_NOTE` 审计事件。
+- 不写入 `cs_message`，用户端不可见，仅用于坐席内部协作和后续跟进。
+
+响应：
+
+```ts
+ApiResponse<ActionResult>
+```
+
+已有数据库需要先执行：
+
+```sql
+source infra/sql/08-work-order-internal-note-action.sql;
+```
+
+### 4.6 领取工单
 
 ```http
 POST /api/workbench/tickets/{ticketId}/claim
@@ -378,7 +434,7 @@ interface OperatorActionRequest {
 ApiResponse<ActionResult>
 ```
 
-### 4.6 审批通过
+### 4.7 审批通过
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/approve
@@ -413,7 +469,7 @@ interface ApprovalDecisionRequest {
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核通过结果
 
-### 4.7 审批驳回
+### 4.8 审批驳回
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/reject
@@ -428,7 +484,7 @@ POST /api/workbench/tickets/{ticketId}/approval/reject
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核驳回结果
 
-### 4.8 开始人工接管
+### 4.9 开始人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/start
@@ -453,7 +509,7 @@ interface OperatorActionRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，提示人工客服已接入
 
-### 4.9 结束人工接管
+### 4.10 结束人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/finish

@@ -5,6 +5,7 @@ import {
   Card,
   Col,
   Descriptions,
+  Empty,
   Input,
   message,
   Modal,
@@ -21,6 +22,7 @@ import {
   CloseCircleOutlined,
   LoginOutlined,
   LogoutOutlined,
+  MessageOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -31,6 +33,7 @@ import {
   rejectTicket,
   startTakeover,
   finishTakeover,
+  addInternalNote,
 } from "../../services/api";
 import type { TicketDetail as TicketDetailType } from "../../types/workbench";
 import {
@@ -45,6 +48,16 @@ import {
 
 const { Title, Text } = Typography;
 
+const ACTION_TYPE_TEXT: Record<string, string> = {
+  ASSIGN: "领取工单",
+  APPROVE: "审批通过",
+  REJECT: "审批驳回",
+  TAKEOVER: "人工接管",
+  CLOSE: "关闭工单",
+  ESCALATE: "升级处理",
+  INTERNAL_NOTE: "内部备注",
+};
+
 const TicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
@@ -57,6 +70,8 @@ const TicketDetailPage: React.FC = () => {
   }>({ open: false, action: "", onConfirm: () => {} });
   const [commentValue, setCommentValue] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [internalNote, setInternalNote] = useState("");
+  const [noteLoading, setNoteLoading] = useState(false);
 
   const loadDetail = useCallback(async () => {
     if (!ticketId) return;
@@ -131,6 +146,29 @@ const TicketDetailPage: React.FC = () => {
       await loadDetail();
     });
 
+  const handleAddInternalNote = async () => {
+    const comment = internalNote.trim();
+    if (!comment) {
+      message.warning("请输入内部备注");
+      return;
+    }
+    setNoteLoading(true);
+    try {
+      await addInternalNote(ticketId!, {
+        operatorId: DEFAULT_OPERATOR_ID,
+        comment,
+        payload: { source: "ticket-detail" },
+      });
+      message.success("内部备注已记录");
+      setInternalNote("");
+      await loadDetail();
+    } catch (err) {
+      message.error((err as Error).message || "内部备注提交失败");
+    } finally {
+      setNoteLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: "center", padding: 80 }}>
@@ -148,6 +186,9 @@ const TicketDetailPage: React.FC = () => {
   }
 
   const { ticket, approval, takeover, messages, actions } = detail;
+  const internalNotes = actions.filter(
+    (action) => action.source === "WORK_ORDER" && action.actionType === "INTERNAL_NOTE",
+  );
   const woStatus = WORK_ORDER_STATUS_MAP[ticket.status];
   const riskCfg = RISK_LEVEL_MAP[ticket.riskLevel];
   const prioCfg = PRIORITY_MAP[ticket.priority];
@@ -427,6 +468,52 @@ const TicketDetailPage: React.FC = () => {
             </Card>
           )}
 
+          <Card title="内部协作" size="small" style={{ marginBottom: 16 }}>
+            <Space direction="vertical" style={{ width: "100%" }} size={12}>
+              <Input.TextArea
+                rows={3}
+                maxLength={500}
+                showCount
+                placeholder="记录仅坐席可见的处理备注、协作信息或后续跟进点"
+                value={internalNote}
+                onChange={(e) => setInternalNote(e.target.value)}
+              />
+              <Button
+                type="primary"
+                icon={<MessageOutlined />}
+                loading={noteLoading}
+                onClick={handleAddInternalNote}
+                block
+              >
+                添加内部备注
+              </Button>
+              {internalNotes.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无内部备注" />
+              ) : (
+                <Timeline
+                  items={internalNotes.map((note) => ({
+                    color: "gold",
+                    children: (
+                      <div>
+                        <div style={{ marginBottom: 2 }}>
+                          <Text strong>{note.operatorId}</Text>
+                          <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                            {note.createdAt
+                              ? dayjs(note.createdAt).format("MM-DD HH:mm:ss")
+                              : ""}
+                          </Text>
+                        </div>
+                        <div style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>
+                          {note.comment}
+                        </div>
+                      </div>
+                    ),
+                  }))}
+                />
+              )}
+            </Space>
+          </Card>
+
           {/* Action log timeline */}
           <Card
             title={`操作日志 (${actions.length})`}
@@ -446,7 +533,9 @@ const TicketDetailPage: React.FC = () => {
                   children: (
                     <div>
                       <div>
-                        <Text strong>{action.actionType}</Text>
+                        <Text strong>
+                          {ACTION_TYPE_TEXT[action.actionType] || action.actionType}
+                        </Text>
                         {action.beforeStatus && action.afterStatus && (
                           <Text type="secondary" style={{ marginLeft: 4 }}>
                             {action.beforeStatus} → {action.afterStatus}

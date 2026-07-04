@@ -83,3 +83,108 @@ test('workstation renders ticket list and can claim a pending ticket', async ({ 
   await page.getByRole('button', { name: '领取' }).click()
   await expect.poll(() => claimCalled).toBe(true)
 })
+
+test('workstation ticket detail can add an internal note', async ({ page }) => {
+  let noteCalled = false
+  let noteCreated = false
+
+  const ticketDetail = () => ({
+    ticket: {
+      ticketId: 'wo_e2e_refund',
+      traceId,
+      sessionId: 's_e2e_refund',
+      userId: 'u1001',
+      intent: 'refund.apply',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_REVIEW',
+      status: 'PROCESSING',
+      priority: 'HIGH',
+      assignedAgent: 'agent001',
+      reason: '用户申请退款',
+      contextSnapshot: {},
+      resolution: {},
+      slaDeadline: null,
+      createdAt: '2026-06-25T10:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+      resolvedAt: null,
+    },
+    approval: {
+      approvalId: 'ap_e2e_refund',
+      ticketId: 'wo_e2e_refund',
+      traceId,
+      sessionId: 's_e2e_refund',
+      userId: 'u1001',
+      intent: 'refund.apply',
+      approvalType: 'REFUND',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_REVIEW',
+      status: 'CLAIMED',
+      priority: 'HIGH',
+      assignedReviewer: 'agent001',
+      riskReason: '退款需人工审核',
+      requestPayload: {},
+      contextSnapshot: {},
+      approvalResult: {},
+      expireAt: null,
+      createdAt: '2026-06-25T10:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+      completedAt: null,
+    },
+    takeover: null,
+    messages: [],
+    actions: noteCreated
+      ? [
+          {
+            actionId: 'wa_note',
+            source: 'WORK_ORDER',
+            ticketId: 'wo_e2e_refund',
+            traceId,
+            operatorId: 'agent001',
+            actionType: 'INTERNAL_NOTE',
+            beforeStatus: null,
+            afterStatus: null,
+            comment: '需要主管复核退款凭证',
+            actionData: { noteType: 'INTERNAL' },
+            createdAt: '2026-06-25T10:05:00Z',
+          },
+        ]
+      : [],
+  })
+
+  await page.route('**/api/workbench/tickets/wo_e2e_refund', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse(ticketDetail())),
+    })
+  })
+
+  await page.route('**/api/workbench/tickets/wo_e2e_refund/notes', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    expect(body.operatorId).toBeTruthy()
+    expect(body.comment).toBe('需要主管复核退款凭证')
+    noteCalled = true
+    noteCreated = true
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        ticketId: 'wo_e2e_refund',
+        workOrderStatus: 'PROCESSING',
+        approvalStatus: 'CLAIMED',
+        takeoverStatus: null,
+        message: '内部备注已记录',
+      })),
+    })
+  })
+
+  await page.goto('/tickets/wo_e2e_refund')
+
+  await expect(page.getByText('内部协作')).toBeVisible()
+  await page.getByPlaceholder('记录仅坐席可见的处理备注、协作信息或后续跟进点').fill('需要主管复核退款凭证')
+  await page.getByRole('button', { name: '添加内部备注' }).click()
+
+  await expect.poll(() => noteCalled).toBe(true)
+  await expect(page.getByText('需要主管复核退款凭证').first()).toBeVisible()
+})

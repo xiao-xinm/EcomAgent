@@ -6,6 +6,7 @@ import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionLogView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalDecisionRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
@@ -73,6 +74,17 @@ public class WorkbenchTicketController {
     public ApiResponse<List<ActionLogView>> listActions(@PathVariable String ticketId) {
         String traceId = TraceIds.newTraceId();
         return ApiResponse.success(ticketService.listActions(ticketId), traceId);
+    }
+
+    @PostMapping(
+            value = "/api/workbench/tickets/{ticketId}/notes",
+            consumes = APPLICATION_JSON_UTF8,
+            produces = APPLICATION_JSON_UTF8)
+    public ApiResponse<ActionResult> addInternalNote(
+            @PathVariable String ticketId,
+            @Valid @RequestBody InternalNoteRequest request) {
+        String traceId = TraceIds.newTraceId();
+        return ApiResponse.success(ticketService.addInternalNote(ticketId, request), traceId);
     }
 
     @PostMapping(

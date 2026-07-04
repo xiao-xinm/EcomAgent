@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS `work_order_action` (
     `ticket_id`        VARCHAR(64)   NOT NULL COMMENT '工单ID',
     `trace_id`         VARCHAR(64)   NOT NULL COMMENT '链路追踪ID',
     `operator_id`      VARCHAR(64)   NOT NULL COMMENT '操作人ID',
-    `action_type`      ENUM('CREATE', 'ASSIGN', 'APPROVE', 'REJECT', 'MODIFY_AND_APPROVE', 'TAKEOVER', 'ESCALATE', 'CLOSE') NOT NULL COMMENT '动作',
+    `action_type`      ENUM('CREATE', 'ASSIGN', 'APPROVE', 'REJECT', 'MODIFY_AND_APPROVE', 'TAKEOVER', 'ESCALATE', 'CLOSE', 'INTERNAL_NOTE') NOT NULL COMMENT '动作',
     `comment`          VARCHAR(1024) DEFAULT NULL COMMENT '操作备注',
     `action_data`      JSON          DEFAULT NULL COMMENT '操作数据',
     `created_at`       DATETIME(3)   NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS `work_order_action` (
     CONSTRAINT `fk_work_order_action_ticket`
         FOREIGN KEY (`ticket_id`) REFERENCES `work_order` (`ticket_id`),
     CONSTRAINT `chk_work_order_action_type`
-        CHECK (`action_type` IN ('CREATE', 'ASSIGN', 'APPROVE', 'REJECT', 'MODIFY_AND_APPROVE', 'TAKEOVER', 'ESCALATE', 'CLOSE'))
+        CHECK (`action_type` IN ('CREATE', 'ASSIGN', 'APPROVE', 'REJECT', 'MODIFY_AND_APPROVE', 'TAKEOVER', 'ESCALATE', 'CLOSE', 'INTERNAL_NOTE'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='工单操作记录表';
 
 -- ============================================================

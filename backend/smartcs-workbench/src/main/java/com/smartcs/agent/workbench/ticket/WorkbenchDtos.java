@@ -163,6 +163,13 @@ public final class WorkbenchDtos {
     ) {
     }
 
+    public record InternalNoteRequest(
+            @NotBlank String operatorId,
+            @NotBlank String comment,
+            Map<String, Object> payload
+    ) {
+    }
+
     public record ActionResult(
             String ticketId,
             String workOrderStatus,

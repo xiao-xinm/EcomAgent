@@ -8,6 +8,7 @@ import type {
   OperatorActionRequest,
   ApprovalDecisionRequest,
   TakeoverFinishRequest,
+  InternalNoteRequest,
   TicketQueryParams,
   ActionLogView,
 } from "../types/workbench";
@@ -48,6 +49,15 @@ export async function fetchTicketActions(
   ticketId: string,
 ): Promise<ActionLogView[]> {
   return unwrap(client.get(`/api/workbench/tickets/${ticketId}/actions`));
+}
+
+export async function addInternalNote(
+  ticketId: string,
+  body: InternalNoteRequest,
+): Promise<ActionResult> {
+  return unwrap(
+    client.post(`/api/workbench/tickets/${ticketId}/notes`, body),
+  );
 }
 
 export async function claimTicket(
