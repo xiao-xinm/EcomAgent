@@ -11,6 +11,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
 import java.time.Instant;
@@ -88,6 +89,22 @@ class WorkbenchTicketControllerTest {
                 "2026-07-04 23:59:59",
                 1,
                 20);
+    }
+
+    @Test
+    void getTicketStatsWrapsStatsResult() {
+        WorkbenchTicketService ticketService = mock(WorkbenchTicketService.class);
+        WorkbenchTicketController controller = new WorkbenchTicketController(ticketService);
+        TicketStatsView stats = new TicketStatsView(12, 4, 3, 5, 1);
+        when(ticketService.getTicketStats()).thenReturn(stats);
+
+        ApiResponse<TicketStatsView> response = controller.getTicketStats();
+
+        assertThat(response.code()).isEqualTo("0000");
+        assertThat(response.traceId()).isNotBlank();
+        assertThat(response.data()).isSameAs(stats);
+        assertThat(response.data().overdueRisk()).isEqualTo(1);
+        verify(ticketService).getTicketStats();
     }
 
     @Test

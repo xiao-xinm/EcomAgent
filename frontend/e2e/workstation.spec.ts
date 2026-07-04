@@ -16,6 +16,20 @@ function apiResponse<T>(data: T) {
 test('workstation renders ticket list and can claim a pending ticket', async ({ page }) => {
   let claimCalled = false
 
+  await page.route('**/api/workbench/tickets/stats', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        total: 12,
+        pending: 4,
+        processing: 3,
+        completed: 5,
+        overdueRisk: 1,
+      })),
+    })
+  })
+
   await page.route('**/api/workbench/tickets?**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -72,6 +86,11 @@ test('workstation renders ticket list and can claim a pending ticket', async ({ 
   await page.goto('/tickets')
 
   await expect(page.getByText('人工坐席工作台')).toBeVisible()
+  await expect(page.getByText('总工单')).toBeVisible()
+  await expect(page.getByText('待处理').first()).toBeVisible()
+  await expect(page.getByText('处理中').first()).toBeVisible()
+  await expect(page.getByText('已完成').first()).toBeVisible()
+  await expect(page.getByText('超时风险')).toBeVisible()
   await expect(page.getByRole('main').getByText('工单列表')).toBeVisible()
   await expect(page.getByText('风险等级').first()).toBeVisible()
   await expect(page.getByText('优先级').first()).toBeVisible()

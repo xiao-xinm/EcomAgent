@@ -36,6 +36,15 @@ public final class WorkbenchDtos {
     ) {
     }
 
+    public record TicketStatsView(
+            long total,
+            long pending,
+            long processing,
+            long completed,
+            long overdueRisk
+    ) {
+    }
+
     public record WorkOrderView(
             String ticketId,
             String traceId,

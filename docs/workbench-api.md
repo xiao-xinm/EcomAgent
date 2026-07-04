@@ -137,6 +137,26 @@ interface TicketSummary {
 }
 ```
 
+### TicketStatsView
+
+```ts
+interface TicketStatsView {
+  total: number;
+  pending: number;
+  processing: number;
+  completed: number;
+  overdueRisk: number;
+}
+```
+
+统计口径：
+
+- `total`：全部工单数量。
+- `pending`：待处理工单，包含 `PENDING`、`ASSIGNED`、`ESCALATED`。
+- `processing`：处理中工单，包含 `PROCESSING`。
+- `completed`：已完成工单，包含 `APPROVED`、`REJECTED`、`RESOLVED`、`CLOSED`。
+- `overdueRisk`：`slaDeadline` 已过期且工单未进入终态的数量。
+
 ### TicketDetail
 
 ```ts
@@ -324,7 +344,21 @@ Invoke-RestMethod `
   -Uri "http://localhost:8083/api/workbench/tickets?status=PENDING&riskLevel=L3&intent=refund.apply&pageNo=1&pageSize=20"
 ```
 
-### 4.3 工单详情
+### 4.3 工单统计
+
+```http
+GET /api/workbench/tickets/stats
+```
+
+响应：
+
+```ts
+ApiResponse<TicketStatsView>
+```
+
+用于坐席工作台列表页顶部展示总工单、待处理、处理中、已完成和超时风险。
+
+### 4.4 工单详情
 
 ```http
 GET /api/workbench/tickets/{ticketId}
@@ -344,7 +378,7 @@ ApiResponse<TicketDetail>
 - 当前会话最近消息
 - 工单操作日志
 
-### 4.4 工单操作日志
+### 4.5 工单操作日志
 
 ```http
 GET /api/workbench/tickets/{ticketId}/actions
@@ -366,7 +400,7 @@ ApiResponse<ActionLogView[]>
 - 备注：展示 `comment`，用于坐席处理说明或内部协作记录。
 - 动作数据：`actionData` 保留为可展开 JSON，用于排查 payload、子动作和审计上下文。
 
-### 4.5 添加内部备注
+### 4.6 添加内部备注
 
 ```http
 POST /api/workbench/tickets/{ticketId}/notes
@@ -412,7 +446,7 @@ ApiResponse<ActionResult>
 source infra/sql/08-work-order-internal-note-action.sql;
 ```
 
-### 4.6 领取工单
+### 4.7 领取工单
 
 ```http
 POST /api/workbench/tickets/{ticketId}/claim
@@ -452,7 +486,7 @@ interface OperatorActionRequest {
 ApiResponse<ActionResult>
 ```
 
-### 4.7 审批通过
+### 4.8 审批通过
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/approve
@@ -487,7 +521,7 @@ interface ApprovalDecisionRequest {
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核通过结果
 
-### 4.8 审批驳回
+### 4.9 审批驳回
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/reject
@@ -502,7 +536,7 @@ POST /api/workbench/tickets/{ticketId}/approval/reject
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核驳回结果
 
-### 4.9 开始人工接管
+### 4.10 开始人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/start
@@ -527,7 +561,7 @@ interface OperatorActionRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，提示人工客服已接入
 
-### 4.10 发送人工接管消息
+### 4.11 发送人工接管消息
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/messages
@@ -568,7 +602,7 @@ interface TakeoverMessageRequest {
 ApiResponse<ActionResult>
 ```
 
-### 4.11 结束人工接管
+### 4.12 结束人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/finish

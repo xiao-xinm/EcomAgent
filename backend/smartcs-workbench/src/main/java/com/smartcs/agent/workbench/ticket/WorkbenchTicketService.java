@@ -16,6 +16,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.WorkOrderView;
 import com.smartcs.agent.workbench.notification.NotificationEventClient;
@@ -136,6 +137,39 @@ public class WorkbenchTicketService {
                 normalizedTotal,
                 records.size());
         return new PageResult<>(records, normalizedTotal, normalizedPageNo, normalizedPageSize);
+    }
+
+    public TicketStatsView getTicketStats() {
+        TicketStatsView stats = jdbcTemplate.queryForObject(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN status IN ('PENDING', 'ASSIGNED', 'ESCALATED') THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END) AS processing,
+                    SUM(CASE WHEN status IN ('APPROVED', 'REJECTED', 'RESOLVED', 'CLOSED') THEN 1 ELSE 0 END) AS completed,
+                    SUM(CASE
+                        WHEN sla_deadline IS NOT NULL
+                         AND sla_deadline < CURRENT_TIMESTAMP(3)
+                         AND status NOT IN ('APPROVED', 'REJECTED', 'RESOLVED', 'CLOSED')
+                        THEN 1 ELSE 0
+                    END) AS overdue_risk
+                FROM work_order
+                """,
+                (rs, rowNum) -> new TicketStatsView(
+                        rs.getLong("total"),
+                        rs.getLong("pending"),
+                        rs.getLong("processing"),
+                        rs.getLong("completed"),
+                        rs.getLong("overdue_risk")));
+        TicketStatsView normalized = stats == null ? new TicketStatsView(0, 0, 0, 0, 0) : stats;
+        LOGGER.info(
+                "查询工单统计 total={} pending={} processing={} completed={} overdueRisk={}",
+                normalized.total(),
+                normalized.pending(),
+                normalized.processing(),
+                normalized.completed(),
+                normalized.overdueRisk());
+        return normalized;
     }
 
     public TicketDetail getTicketDetail(String ticketId) {

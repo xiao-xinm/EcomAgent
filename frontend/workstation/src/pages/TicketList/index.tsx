@@ -1,13 +1,14 @@
-import React, { useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Tag, Space, message } from "antd";
+import { Button, Tag, Space, message, Row, Col, Card, Statistic } from "antd";
 import { EyeOutlined } from "@ant-design/icons";
 import type { ActionType, ProColumns } from "@ant-design/pro-components";
 import { ProTable } from "@ant-design/pro-components";
 import dayjs from "dayjs";
-import { fetchTickets, claimTicket } from "../../services/api";
+import { fetchTickets, fetchTicketStats, claimTicket } from "../../services/api";
 import type {
   TicketSummary,
+  TicketStatsView,
   WorkOrderStatus,
   RouteDecision,
   RiskLevel,
@@ -69,6 +70,23 @@ const intentOptions = [
 const TicketList: React.FC = () => {
   const actionRef = useRef<ActionType>();
   const navigate = useNavigate();
+  const [stats, setStats] = useState<TicketStatsView | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      setStats(await fetchTicketStats());
+    } catch (err) {
+      message.error((err as Error).message || "统计数据加载失败");
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   const handleClaim = async (record: TicketSummary) => {
     try {
@@ -77,6 +95,7 @@ const TicketList: React.FC = () => {
         comment: "领取工单",
       });
       message.success("领取成功");
+      await loadStats();
       actionRef.current?.reload();
     } catch (err) {
       message.error((err as Error).message || "领取失败");
@@ -208,42 +227,76 @@ const TicketList: React.FC = () => {
   ];
 
   return (
-    <ProTable<TicketSummary>
-      headerTitle="工单列表"
-      actionRef={actionRef}
-      rowKey="ticketId"
-      columns={columns}
-      request={async (params) => {
-        try {
-          const { current, pageSize, ...rest } = params;
-          const result = await fetchTickets({
-            pageNo: current,
-            pageSize,
-            status: rest.status as WorkOrderStatus | undefined,
-            routeDecision: rest.routeDecision as RouteDecision | undefined,
-            riskLevel: rest.riskLevel as RiskLevel | undefined,
-            intent: rest.intent as string | undefined,
-            priority: rest.priority as Priority | undefined,
-            assignedAgent: rest.assignedAgent as string | undefined,
-            keyword: rest.keyword as string | undefined,
-            createdAtFrom: rest.createdAtFrom as string | undefined,
-            createdAtTo: rest.createdAtTo as string | undefined,
-          });
-          return {
-            data: result.records,
-            total: result.total,
-            success: true,
-          };
-        } catch (err) {
-          message.error((err as Error).message || "查询失败");
-          return { data: [], total: 0, success: false };
-        }
-      }}
-      pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-      search={{ labelWidth: "auto", collapsed: false }}
-      scroll={{ x: 1200 }}
-      dateFormatter="string"
-    />
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Row gutter={16}>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card size="small" loading={statsLoading}>
+            <Statistic title="总工单" value={stats?.total || 0} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card size="small" loading={statsLoading}>
+            <Statistic title="待处理" value={stats?.pending || 0} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card size="small" loading={statsLoading}>
+            <Statistic title="处理中" value={stats?.processing || 0} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card size="small" loading={statsLoading}>
+            <Statistic title="已完成" value={stats?.completed || 0} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={8} xl={4}>
+          <Card size="small" loading={statsLoading}>
+            <Statistic
+              title="超时风险"
+              value={stats?.overdueRisk || 0}
+              valueStyle={{ color: stats?.overdueRisk ? "#cf1322" : undefined }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      <ProTable<TicketSummary>
+        headerTitle="工单列表"
+        actionRef={actionRef}
+        rowKey="ticketId"
+        columns={columns}
+        request={async (params) => {
+          try {
+            const { current, pageSize, ...rest } = params;
+            const result = await fetchTickets({
+              pageNo: current,
+              pageSize,
+              status: rest.status as WorkOrderStatus | undefined,
+              routeDecision: rest.routeDecision as RouteDecision | undefined,
+              riskLevel: rest.riskLevel as RiskLevel | undefined,
+              intent: rest.intent as string | undefined,
+              priority: rest.priority as Priority | undefined,
+              assignedAgent: rest.assignedAgent as string | undefined,
+              keyword: rest.keyword as string | undefined,
+              createdAtFrom: rest.createdAtFrom as string | undefined,
+              createdAtTo: rest.createdAtTo as string | undefined,
+            });
+            return {
+              data: result.records,
+              total: result.total,
+              success: true,
+            };
+          } catch (err) {
+            message.error((err as Error).message || "查询失败");
+            return { data: [], total: 0, success: false };
+          }
+        }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+        search={{ labelWidth: "auto", collapsed: false }}
+        scroll={{ x: 1200 }}
+        dateFormatter="string"
+      />
+    </Space>
   );
 };
 

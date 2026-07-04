@@ -84,6 +84,14 @@ export interface TicketSummary {
   takeoverStatus?: TakeoverStatus | null;
 }
 
+export interface TicketStatsView {
+  total: number;
+  pending: number;
+  processing: number;
+  completed: number;
+  overdueRisk: number;
+}
+
 export interface WorkOrderView extends TicketSummary {
   contextSnapshot: Record<string, unknown>;
   resolution: Record<string, unknown>;

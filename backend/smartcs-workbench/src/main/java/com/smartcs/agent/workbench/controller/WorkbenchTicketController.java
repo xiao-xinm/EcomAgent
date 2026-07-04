@@ -11,6 +11,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
 import jakarta.validation.Valid;
@@ -63,6 +64,12 @@ public class WorkbenchTicketController {
                 pageNo,
                 pageSize);
         return ApiResponse.success(result, traceId);
+    }
+
+    @GetMapping(value = "/api/workbench/tickets/stats", produces = APPLICATION_JSON_UTF8)
+    public ApiResponse<TicketStatsView> getTicketStats() {
+        String traceId = TraceIds.newTraceId();
+        return ApiResponse.success(ticketService.getTicketStats(), traceId);
     }
 
     @GetMapping(value = "/api/workbench/tickets/{ticketId}", produces = APPLICATION_JSON_UTF8)

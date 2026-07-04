@@ -3,6 +3,7 @@ import type {
   ApiResponse,
   PageResult,
   TicketSummary,
+  TicketStatsView,
   TicketDetail,
   ActionResult,
   OperatorActionRequest,
@@ -38,6 +39,10 @@ export async function fetchTickets(
   params: TicketQueryParams,
 ): Promise<PageResult<TicketSummary>> {
   return unwrap(client.get("/api/workbench/tickets", { params }));
+}
+
+export async function fetchTicketStats(): Promise<TicketStatsView> {
+  return unwrap(client.get("/api/workbench/tickets/stats"));
 }
 
 export async function fetchTicketDetail(
