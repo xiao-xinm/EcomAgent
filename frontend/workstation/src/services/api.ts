@@ -93,6 +93,30 @@ export async function rejectTicket(
   );
 }
 
+export async function requestApprovalMaterials(
+  ticketId: string,
+  body: ApprovalDecisionRequest,
+): Promise<ActionResult> {
+  return unwrap(
+    client.post(
+      `/api/workbench/tickets/${ticketId}/approval/request-materials`,
+      body,
+    ),
+  );
+}
+
+export async function transferApprovalToTakeover(
+  ticketId: string,
+  body: ApprovalDecisionRequest,
+): Promise<ActionResult> {
+  return unwrap(
+    client.post(
+      `/api/workbench/tickets/${ticketId}/approval/transfer-takeover`,
+      body,
+    ),
+  );
+}
+
 export async function startTakeover(
   ticketId: string,
   body: OperatorActionRequest,

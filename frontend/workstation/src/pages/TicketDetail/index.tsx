@@ -33,6 +33,8 @@ import {
   claimTicket,
   approveTicket,
   rejectTicket,
+  requestApprovalMaterials,
+  transferApprovalToTakeover,
   startTakeover,
   finishTakeover,
   addInternalNote,
@@ -82,6 +84,13 @@ function readStringValue(record: Record<string, unknown>, key: string) {
 }
 
 function actionDisplay(action: ActionLogView) {
+  const decisionType = readStringValue(action.actionData, "decisionType");
+  if (action.source === "APPROVAL" && decisionType === "REQUEST_MATERIALS") {
+    return { text: "要求补充材料", color: "warning" };
+  }
+  if (action.source === "APPROVAL" && decisionType === "TRANSFER_TAKEOVER") {
+    return { text: "转人工接管", color: "cyan" };
+  }
   const subAction = readStringValue(action.actionData, "subAction");
   if (action.actionType === "TAKEOVER" && subAction === "MESSAGE_SENT") {
     return { text: "发送人工消息", color: "cyan" };
@@ -95,6 +104,9 @@ function actionDisplay(action: ActionLogView) {
 function actionTimelineColor(action: ActionLogView) {
   if (action.afterStatus === "APPROVED" || action.afterStatus === "RESOLVED") {
     return "green";
+  }
+  if (action.afterStatus === "ESCALATED") {
+    return "orange";
   }
   if (action.afterStatus === "REJECTED" || action.afterStatus === "CANCELLED") {
     return "red";
@@ -128,6 +140,30 @@ function payloadText(payload: Record<string, unknown>, key: string) {
 
 function textOrDash(value: string) {
   return value || "-";
+}
+
+function hasPayload(record: Record<string, unknown>) {
+  return Object.keys(record).length > 0;
+}
+
+function approvalDecisionText(payload: Record<string, unknown>) {
+  const decisionType = payloadText(payload, "decisionType") || payloadText(payload, "decision");
+  const labels: Record<string, string> = {
+    APPROVED: "审批通过",
+    REJECTED: "审批驳回",
+    REQUEST_MATERIALS: "要求补充材料",
+    TRANSFER_TAKEOVER: "转人工接管",
+  };
+  return labels[decisionType] || decisionType || "-";
+}
+
+function approvalDecisionColor(payload: Record<string, unknown>) {
+  const decisionType = payloadText(payload, "decisionType") || payloadText(payload, "decision");
+  if (decisionType === "APPROVED") return "success";
+  if (decisionType === "REJECTED") return "error";
+  if (decisionType === "REQUEST_MATERIALS") return "warning";
+  if (decisionType === "TRANSFER_TAKEOVER") return "cyan";
+  return "default";
 }
 
 function refundAmountText(payload: Record<string, unknown>) {
@@ -229,6 +265,8 @@ const TicketDetailPage: React.FC = () => {
       await approveTicket(ticketId!, {
         operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "审批通过",
+        decisionType: "APPROVED",
+        result: { conclusion: "APPROVED" },
       });
       message.success("审批通过");
       await loadDetail();
@@ -239,8 +277,36 @@ const TicketDetailPage: React.FC = () => {
       await rejectTicket(ticketId!, {
         operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "审批驳回",
+        decisionType: "REJECTED",
+        result: { conclusion: "REJECTED" },
       });
       message.success("已驳回");
+      await loadDetail();
+    });
+
+  const handleRequestMaterials = () =>
+    withComment("要求补充材料", async (comment) => {
+      const materialComment = comment || "请补充相关凭证或说明";
+      await requestApprovalMaterials(ticketId!, {
+        operatorId: DEFAULT_OPERATOR_ID,
+        comment: materialComment,
+        decisionType: "REQUEST_MATERIALS",
+        result: { requiredMaterials: materialComment },
+      });
+      message.success("已通知用户补充材料");
+      await loadDetail();
+    });
+
+  const handleTransferToTakeover = () =>
+    withComment("转人工接管", async (comment) => {
+      const transferReason = comment || "审批需要人工接管继续处理";
+      await transferApprovalToTakeover(ticketId!, {
+        operatorId: DEFAULT_OPERATOR_ID,
+        comment: transferReason,
+        decisionType: "TRANSFER_TAKEOVER",
+        result: { transferReason },
+      });
+      message.success("已转人工接管");
       await loadDetail();
     });
 
@@ -393,6 +459,12 @@ const TicketDetailPage: React.FC = () => {
                 onClick={handleReject}
               >
                 审批驳回
+              </Button>
+              <Button icon={<MessageOutlined />} onClick={handleRequestMaterials}>
+                要求补充材料
+              </Button>
+              <Button icon={<LoginOutlined />} onClick={handleTransferToTakeover}>
+                转人工接管
               </Button>
             </>
           )}
@@ -560,6 +632,18 @@ const TicketDetailPage: React.FC = () => {
                 <Descriptions.Item label="风险原因">
                   {approval.riskReason || "-"}
                 </Descriptions.Item>
+                {hasPayload(approval.approvalResult) && (
+                  <>
+                    <Descriptions.Item label="审批结论">
+                      <Tag color={approvalDecisionColor(approval.approvalResult)}>
+                        {approvalDecisionText(approval.approvalResult)}
+                      </Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="结论备注">
+                      {textOrDash(payloadText(approval.approvalResult, "comment"))}
+                    </Descriptions.Item>
+                  </>
+                )}
                 <Descriptions.Item label="审核人">
                   {approval.assignedReviewer || "-"}
                 </Descriptions.Item>

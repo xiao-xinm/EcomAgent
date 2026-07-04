@@ -61,6 +61,11 @@ export type ApprovalType =
   | "ORDER_CANCEL"
   | "COMPENSATION"
   | "OTHER";
+export type ApprovalDecisionType =
+  | "APPROVED"
+  | "REJECTED"
+  | "REQUEST_MATERIALS"
+  | "TRANSFER_TAKEOVER";
 
 export interface TicketSummary {
   ticketId: string;
@@ -194,6 +199,7 @@ export interface OperatorActionRequest {
 export interface ApprovalDecisionRequest {
   operatorId: string;
   comment?: string;
+  decisionType?: ApprovalDecisionType;
   result?: Record<string, unknown>;
 }
 

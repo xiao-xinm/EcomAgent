@@ -332,6 +332,162 @@ test('workstation ticket detail renders exchange request context', async ({ page
   await expect(page.getByText('换货凭证（选填，NOT_PROVIDED）')).toBeVisible()
 })
 
+test('workstation ticket detail can request materials and transfer approval to takeover', async ({ page }) => {
+  let materialCalled = false
+  let transferCalled = false
+  let phase: 'open' | 'materials' | 'transfer' = 'open'
+
+  const ticketDetail = () => ({
+    ticket: {
+      ticketId: 'wo_e2e_decision',
+      traceId,
+      sessionId: 's_e2e_decision',
+      userId: 'u1001',
+      intent: 'refund.apply',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_REVIEW',
+      status: phase === 'transfer' ? 'ESCALATED' : 'PROCESSING',
+      priority: 'HIGH',
+      assignedAgent: 'agent001',
+      reason: '退款申请需要人工审核',
+      contextSnapshot: {},
+      resolution: {},
+      slaDeadline: null,
+      createdAt: '2026-06-25T10:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+      resolvedAt: null,
+    },
+    approval: {
+      approvalId: 'ap_e2e_decision',
+      ticketId: 'wo_e2e_decision',
+      traceId,
+      sessionId: 's_e2e_decision',
+      userId: 'u1001',
+      intent: 'refund.apply',
+      approvalType: 'REFUND',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_REVIEW',
+      status: phase === 'transfer' ? 'ESCALATED' : 'CLAIMED',
+      priority: 'HIGH',
+      assignedReviewer: 'agent001',
+      riskReason: '退款需人工审核',
+      requestPayload: {
+        businessType: 'REFUND',
+        orderNo: 'E2E-ORDER-3003',
+        refundReason: '商品质量问题',
+        evidencePlaceholders: [],
+        userRequest: '我要退款，需要人工审核',
+      },
+      contextSnapshot: {},
+      approvalResult:
+        phase === 'materials'
+          ? {
+            decisionType: 'REQUEST_MATERIALS',
+            comment: '请上传破损照片',
+          }
+          : phase === 'transfer'
+            ? {
+              decisionType: 'TRANSFER_TAKEOVER',
+              comment: '转人工继续处理',
+            }
+            : {},
+      expireAt: null,
+      createdAt: '2026-06-25T10:00:00Z',
+      updatedAt: '2026-06-25T10:00:00Z',
+      completedAt: phase === 'transfer' ? '2026-06-25T10:10:00Z' : null,
+    },
+    takeover:
+      phase === 'transfer'
+        ? {
+          takeoverId: 'ht_e2e_decision',
+          ticketId: 'wo_e2e_decision',
+          traceId,
+          sessionId: 's_e2e_decision',
+          userId: 'u1001',
+          triggerSource: 'HUMAN_ASSIGNMENT',
+          status: 'ASSIGNED',
+          priority: 'HIGH',
+          assignedAgent: 'agent001',
+          reason: '转人工继续处理',
+          contextSnapshot: {},
+          startedAt: null,
+          endedAt: null,
+          createdAt: '2026-06-25T10:10:00Z',
+          updatedAt: '2026-06-25T10:10:00Z',
+        }
+        : null,
+    messages: [],
+    actions: [],
+  })
+
+  await page.route('**/api/workbench/tickets/wo_e2e_decision', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse(ticketDetail())),
+    })
+  })
+
+  await page.route('**/api/workbench/tickets/wo_e2e_decision/approval/request-materials', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    expect(body.decisionType).toBe('REQUEST_MATERIALS')
+    expect(body.comment).toBe('请上传破损照片')
+    materialCalled = true
+    phase = 'materials'
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        ticketId: 'wo_e2e_decision',
+        workOrderStatus: 'PROCESSING',
+        approvalStatus: 'CLAIMED',
+        takeoverStatus: null,
+        message: '已要求用户补充材料',
+      })),
+    })
+  })
+
+  await page.route('**/api/workbench/tickets/wo_e2e_decision/approval/transfer-takeover', async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    expect(body.decisionType).toBe('TRANSFER_TAKEOVER')
+    expect(body.comment).toBe('转人工继续处理')
+    transferCalled = true
+    phase = 'transfer'
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        ticketId: 'wo_e2e_decision',
+        workOrderStatus: 'ESCALATED',
+        approvalStatus: 'ESCALATED',
+        takeoverStatus: 'ASSIGNED',
+        message: '已转人工接管',
+      })),
+    })
+  })
+
+  await page.goto('/tickets/wo_e2e_decision')
+
+  await page.getByRole('button', { name: '要求补充材料' }).click()
+  await page.getByPlaceholder('备注（可选）').fill('请上传破损照片')
+  await page.locator('.ant-modal-footer .ant-btn-primary').click()
+
+  await expect.poll(() => materialCalled).toBe(true)
+  await expect(page.getByText('审批结论')).toBeVisible()
+  await expect(page.getByText('要求补充材料').first()).toBeVisible()
+  await expect(page.getByText('请上传破损照片')).toBeVisible()
+
+  await page.getByRole('button', { name: '转人工接管' }).click()
+  await page.getByPlaceholder('备注（可选）').fill('转人工继续处理')
+  await page.locator('.ant-modal-footer .ant-btn-primary').click()
+
+  await expect.poll(() => transferCalled).toBe(true)
+  await expect(page.getByText('转人工接管').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: '开始接管' })).toBeVisible()
+})
+
 test('workstation ticket detail can send takeover message to user', async ({ page }) => {
   let messageCalled = false
   let messageCreated = false

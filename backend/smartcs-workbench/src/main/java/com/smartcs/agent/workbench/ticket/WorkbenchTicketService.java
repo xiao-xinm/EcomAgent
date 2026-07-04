@@ -53,6 +53,8 @@ public class WorkbenchTicketService {
             List.of("APPROVED", "REJECTED", "RESOLVED", "CLOSED");
     private static final List<String> OPEN_APPROVAL_STATUSES = List.of("PENDING", "CLAIMED");
     private static final List<String> TERMINAL_TAKEOVER_STATUSES = List.of("RESOLVED", "CANCELLED");
+    private static final List<String> APPROVAL_DECISION_TYPES =
+            List.of("APPROVED", "REJECTED", "REQUEST_MATERIALS", "TRANSFER_TAKEOVER");
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -306,11 +308,7 @@ public class WorkbenchTicketService {
                 ticket.status(),
                 approval.status());
 
-        Map<String, Object> result = data(
-                "decision", "APPROVED",
-                "comment", request.comment(),
-                "operatorId", request.operatorId(),
-                "result", request.result());
+        Map<String, Object> result = approvalConclusion(request, "APPROVED");
         jdbcTemplate.update(
                 """
                 UPDATE approval_task
@@ -373,11 +371,7 @@ public class WorkbenchTicketService {
                 ticket.status(),
                 approval.status());
 
-        Map<String, Object> result = data(
-                "decision", "REJECTED",
-                "comment", request.comment(),
-                "operatorId", request.operatorId(),
-                "result", request.result());
+        Map<String, Object> result = approvalConclusion(request, "REJECTED");
         jdbcTemplate.update(
                 """
                 UPDATE approval_task
@@ -422,6 +416,130 @@ public class WorkbenchTicketService {
                 request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "审批已驳回");
         logActionResult("审批驳回完成", actionResult, request.operatorId());
+        return actionResult;
+    }
+
+    @Transactional
+    public ActionResult requestMaterials(String ticketId, ApprovalDecisionRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        rejectTerminalWorkOrder(ticket.status());
+        ApprovalTaskView approval = requireApproval(ticketId);
+        requireOpenApproval(approval.status());
+        LOGGER.info(
+                "审批要求补充材料 ticketId={} traceId={} approvalId={} operatorId={} beforeApprovalStatus={}",
+                ticketId,
+                ticket.traceId(),
+                approval.approvalId(),
+                request.operatorId(),
+                approval.status());
+
+        Map<String, Object> result = approvalConclusion(request, "REQUEST_MATERIALS");
+        jdbcTemplate.update(
+                """
+                UPDATE approval_task
+                SET assigned_reviewer = ?,
+                    approval_result = CAST(? AS JSON)
+                WHERE approval_id = ?
+                """,
+                request.operatorId(),
+                json(result),
+                approval.approvalId());
+        insertApprovalAction(approval, request.operatorId(), "COMMENT", approval.status(), approval.status(),
+                request.comment(), result);
+        insertAudit(ticket, request.operatorId(), "APPROVAL_MATERIALS_REQUESTED",
+                data("approvalId", approval.approvalId(), "approvalStatus", approval.status(), "decisionType",
+                        "REQUEST_MATERIALS"));
+
+        String userMessage = approvalMaterialsRequestedContent(request);
+        Map<String, Object> notificationData = data(
+                "approvalId", approval.approvalId(),
+                "approvalType", approval.approvalType(),
+                "approvalStatus", approval.status(),
+                "workOrderStatus", ticket.status(),
+                "decisionType", "REQUEST_MATERIALS");
+        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
+                "APPROVAL_MATERIALS_REQUESTED",
+                notificationData);
+        publishNotificationEvent(ticket, "APPROVAL_MATERIALS_REQUESTED", "审批补充材料通知", userMessage,
+                request.operatorId(), notificationData);
+        ActionResult actionResult = currentResult(ticketId, "已要求用户补充材料");
+        logActionResult("审批要求补充材料完成", actionResult, request.operatorId());
+        return actionResult;
+    }
+
+    @Transactional
+    public ActionResult transferToTakeover(String ticketId, ApprovalDecisionRequest request) {
+        WorkOrderView ticket = requireTicket(ticketId);
+        rejectTerminalWorkOrder(ticket.status());
+        ApprovalTaskView approval = requireApproval(ticketId);
+        requireOpenApproval(approval.status());
+        LOGGER.info(
+                "审批转人工接管 ticketId={} traceId={} approvalId={} operatorId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
+                ticketId,
+                ticket.traceId(),
+                approval.approvalId(),
+                request.operatorId(),
+                ticket.status(),
+                approval.status());
+
+        Map<String, Object> result = approvalConclusion(request, "TRANSFER_TAKEOVER");
+        OperatorActionRequest takeoverRequest = new OperatorActionRequest(
+                request.operatorId(),
+                textOr(request.comment(), "审批转人工接管"),
+                data("source", "approval", "approvalId", approval.approvalId(), "decisionType",
+                        "TRANSFER_TAKEOVER", "result", request.result()));
+        HumanTakeoverView takeover = findTakeover(ticketId)
+                .orElseGet(() -> createTakeover(ticket, takeoverRequest));
+        assignTakeoverIfOpen(takeover, takeoverRequest);
+
+        jdbcTemplate.update(
+                """
+                UPDATE approval_task
+                SET status = 'ESCALATED',
+                    assigned_reviewer = ?,
+                    approval_result = CAST(? AS JSON),
+                    completed_at = CURRENT_TIMESTAMP(3)
+                WHERE approval_id = ?
+                """,
+                request.operatorId(),
+                json(result),
+                approval.approvalId());
+        jdbcTemplate.update(
+                """
+                UPDATE work_order
+                SET status = 'ESCALATED',
+                    assigned_agent = ?
+                WHERE ticket_id = ?
+                """,
+                request.operatorId(),
+                ticketId);
+
+        HumanTakeoverView currentTakeover = findTakeover(ticketId).orElse(takeover);
+        insertApprovalAction(approval, request.operatorId(), "ESCALATE", approval.status(), "ESCALATED",
+                request.comment(), result);
+        insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "ESCALATE", request.comment(),
+                data("beforeStatus", ticket.status(), "afterStatus", "ESCALATED", "approvalId",
+                        approval.approvalId(), "takeoverId", currentTakeover.takeoverId()));
+        insertAudit(ticket, request.operatorId(), "APPROVAL_TRANSFERRED_TO_TAKEOVER",
+                data("approvalId", approval.approvalId(), "beforeStatus", approval.status(), "afterStatus",
+                        "ESCALATED", "takeoverId", currentTakeover.takeoverId()));
+
+        String userMessage = approvalTransferredToTakeoverContent();
+        Map<String, Object> notificationData = data(
+                "approvalId", approval.approvalId(),
+                "approvalType", approval.approvalType(),
+                "approvalStatus", "ESCALATED",
+                "workOrderStatus", "ESCALATED",
+                "takeoverId", currentTakeover.takeoverId(),
+                "takeoverStatus", currentTakeover.status(),
+                "decisionType", "TRANSFER_TAKEOVER");
+        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
+                "APPROVAL_TRANSFERRED_TO_TAKEOVER",
+                notificationData);
+        publishNotificationEvent(ticket, "APPROVAL_TRANSFERRED_TO_TAKEOVER", "审批转人工接管通知", userMessage,
+                request.operatorId(), notificationData);
+        ActionResult actionResult = currentResult(ticketId, "已转人工接管");
+        logActionResult("审批转人工接管完成", actionResult, request.operatorId());
         return actionResult;
     }
 
@@ -906,6 +1024,27 @@ public class WorkbenchTicketService {
                 Instant.now()));
     }
 
+    private Map<String, Object> approvalConclusion(ApprovalDecisionRequest request, String expectedDecisionType) {
+        String decisionType = normalizeApprovalDecisionType(request.decisionType(), expectedDecisionType);
+        if (!expectedDecisionType.equals(decisionType)) {
+            throw rejected("审批结论类型与当前操作不匹配");
+        }
+        return data(
+                "decision", decisionType,
+                "decisionType", decisionType,
+                "comment", request.comment(),
+                "operatorId", request.operatorId(),
+                "result", request.result());
+    }
+
+    private String normalizeApprovalDecisionType(String decisionType, String fallback) {
+        String normalized = textOr(decisionType, fallback).trim().toUpperCase().replace('-', '_');
+        if (!APPROVAL_DECISION_TYPES.contains(normalized)) {
+            throw rejected("审批结论类型只支持 APPROVED、REJECTED、REQUEST_MATERIALS、TRANSFER_TAKEOVER");
+        }
+        return normalized;
+    }
+
     private String approvalApprovedContent(ApprovalTaskView approval) {
         if ("REFUND".equalsIgnoreCase(approval.approvalType())) {
             return "你的退款申请已通过人工审核，后续处理会按平台流程继续推进。";
@@ -924,6 +1063,14 @@ public class WorkbenchTicketService {
             return "你的换货申请未通过人工审核，如有疑问可以继续联系人工客服。";
         }
         return "你的申请未通过人工审核，如有疑问可以继续联系人工客服。";
+    }
+
+    private String approvalMaterialsRequestedContent(ApprovalDecisionRequest request) {
+        return "你的申请还需要补充材料：" + textOr(request.comment(), "请补充相关凭证或说明后继续处理。");
+    }
+
+    private String approvalTransferredToTakeoverContent() {
+        return "你的申请已转人工客服继续处理，坐席稍后会接入。";
     }
 
     private String takeoverStartedContent() {

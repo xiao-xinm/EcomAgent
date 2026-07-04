@@ -551,6 +551,7 @@ POST /api/workbench/tickets/{ticketId}/approval/approve
 interface ApprovalDecisionRequest {
   operatorId: string;
   comment?: string;
+  decisionType?: "APPROVED" | "REJECTED" | "REQUEST_MATERIALS" | "TRANSFER_TAKEOVER";
   result?: Record<string, unknown>;
 }
 ```
@@ -561,6 +562,7 @@ interface ApprovalDecisionRequest {
 {
   "operatorId": "agent_001",
   "comment": "符合退款条件，同意",
+  "decisionType": "APPROVED",
   "result": {
     "manualReason": "用户申请合理"
   }
@@ -589,7 +591,60 @@ POST /api/workbench/tickets/{ticketId}/approval/reject
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核驳回结果
 
-### 4.10 开始人工接管
+### 4.10 要求补充材料
+
+```http
+POST /api/workbench/tickets/{ticketId}/approval/request-materials
+```
+
+请求：
+
+```json
+{
+  "operatorId": "agent_001",
+  "comment": "请上传商品破损照片",
+  "decisionType": "REQUEST_MATERIALS",
+  "result": {
+    "requiredMaterials": "商品破损照片"
+  }
+}
+```
+
+效果：
+
+- `approval_task.approval_result` 写入结构化结论。
+- `approval_task.status` 保持当前开放状态，方便用户补充材料后继续审核。
+- 写入审批动作和审计日志。
+- `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到补充材料要求。
+
+### 4.11 审批转人工接管
+
+```http
+POST /api/workbench/tickets/{ticketId}/approval/transfer-takeover
+```
+
+请求：
+
+```json
+{
+  "operatorId": "agent_001",
+  "comment": "情况复杂，转人工继续沟通",
+  "decisionType": "TRANSFER_TAKEOVER",
+  "result": {
+    "transferReason": "需要进一步核实商品状态"
+  }
+}
+```
+
+效果：
+
+- `approval_task.status` 变为 `ESCALATED`，`approval_result` 写入结构化结论。
+- `work_order.status` 变为 `ESCALATED`。
+- 如果不存在 `human_takeover`，后端会创建一条 `HUMAN_ASSIGNMENT` 接管记录；开放接管记录会分配给当前坐席。
+- 写入审批动作、工单动作和审计日志。
+- `cs_message` 新增一条 `SYSTEM` 用户可见消息，提示用户已转人工继续处理。
+
+### 4.12 开始人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/start
@@ -614,7 +669,7 @@ interface OperatorActionRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，提示人工客服已接入
 
-### 4.11 发送人工接管消息
+### 4.13 发送人工接管消息
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/messages
@@ -655,7 +710,7 @@ interface TakeoverMessageRequest {
 ApiResponse<ActionResult>
 ```
 
-### 4.12 结束人工接管
+### 4.14 结束人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/finish
@@ -700,7 +755,7 @@ interface TakeoverFinishRequest {
 - 会话消息区域
 - 审批信息区
 - 操作日志时间线
-- 领取、审批通过、审批驳回、开始接管、结束接管按钮
+- 领取、审批通过、审批驳回、要求补充材料、转人工接管、开始接管、结束接管按钮
 
 不要实现真实退款、换货、订单接口调用。
 

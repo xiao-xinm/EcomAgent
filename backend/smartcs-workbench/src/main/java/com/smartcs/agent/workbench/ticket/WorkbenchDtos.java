@@ -160,6 +160,7 @@ public final class WorkbenchDtos {
     public record ApprovalDecisionRequest(
             @NotBlank String operatorId,
             String comment,
+            String decisionType,
             Map<String, Object> result
     ) {
     }

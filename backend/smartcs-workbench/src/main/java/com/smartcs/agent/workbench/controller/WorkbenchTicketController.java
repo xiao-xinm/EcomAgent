@@ -129,6 +129,28 @@ public class WorkbenchTicketController {
     }
 
     @PostMapping(
+            value = "/api/workbench/tickets/{ticketId}/approval/request-materials",
+            consumes = APPLICATION_JSON_UTF8,
+            produces = APPLICATION_JSON_UTF8)
+    public ApiResponse<ActionResult> requestMaterials(
+            @PathVariable String ticketId,
+            @Valid @RequestBody ApprovalDecisionRequest request) {
+        String traceId = TraceIds.newTraceId();
+        return ApiResponse.success(ticketService.requestMaterials(ticketId, request), traceId);
+    }
+
+    @PostMapping(
+            value = "/api/workbench/tickets/{ticketId}/approval/transfer-takeover",
+            consumes = APPLICATION_JSON_UTF8,
+            produces = APPLICATION_JSON_UTF8)
+    public ApiResponse<ActionResult> transferToTakeover(
+            @PathVariable String ticketId,
+            @Valid @RequestBody ApprovalDecisionRequest request) {
+        String traceId = TraceIds.newTraceId();
+        return ApiResponse.success(ticketService.transferToTakeover(ticketId, request), traceId);
+    }
+
+    @PostMapping(
             value = "/api/workbench/tickets/{ticketId}/takeover/start",
             consumes = APPLICATION_JSON_UTF8,
             produces = APPLICATION_JSON_UTF8)
