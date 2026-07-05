@@ -53,10 +53,37 @@ interface PageResult<T> {
 | --- | --- |
 | `0000` | 成功 |
 | `1001` | 请求参数错误 |
+| `1002` | 未登录或身份缺失 |
+| `1003` | 权限不足 |
 | `1004` | 工单不存在 |
 | `4002` | 当前状态不允许执行该操作 |
 
-## 2. 状态枚举
+## 2. 身份头兼容说明
+
+Phase 8 第一轮已在 Workbench 增加坐席身份上下文兼容层。当前仍兼容请求体里的 `operatorId`，后续会逐步改为以 Token 或可信身份头为准。
+
+推荐后续生产形态：
+
+```http
+Authorization: Bearer <access_token>
+```
+
+当前本地开发可使用：
+
+```http
+X-SmartCS-Operator-Id: agent_001
+X-SmartCS-Roles: AGENT
+```
+
+Workbench 操作接口的兼容规则：
+
+- 请求头 `X-SmartCS-Principal-Id` + `X-SmartCS-Principal-Type=AGENT|SUPERVISOR|ADMIN` 优先级最高。
+- 其次使用开发头 `X-SmartCS-Operator-Id`。
+- 如果没有身份头，继续使用请求体 `operatorId`，并标记为 `LEGACY_BODY`。
+- `GET /api/workbench/me` 没有请求体，本地开发会回退到 `agent_001`，并标记为 `DEV_FALLBACK`。
+- 本阶段不强制鉴权，不校验 JWT 签名，不引入 Redis Session。
+
+## 3. 状态枚举
 
 ### WorkOrderStatus
 
@@ -109,7 +136,7 @@ type RouteDecision =
   | 'REJECT';
 ```
 
-## 3. 数据模型
+## 4. 数据模型
 
 ### TicketSummary
 
@@ -156,6 +183,17 @@ interface TicketStatsView {
 - `processing`：处理中工单，包含 `PROCESSING`。
 - `completed`：已完成工单，包含 `APPROVED`、`REJECTED`、`RESOLVED`、`CLOSED`。
 - `overdueRisk`：`slaDeadline` 已过期且工单未进入终态的数量。
+
+### CurrentOperatorView
+
+```ts
+interface CurrentOperatorView {
+  operatorId: string;
+  principalType: 'AGENT' | 'SUPERVISOR' | 'ADMIN' | string;
+  roles: string[];
+  authSource: 'STANDARD_HEADER' | 'DEV_HEADER' | 'LEGACY_BODY' | 'DEV_FALLBACK' | string;
+}
+```
 
 ### TicketDetail
 
@@ -351,9 +389,9 @@ interface TakeoverMessageRequest {
 }
 ```
 
-## 4. 接口列表
+## 5. 接口列表
 
-### 4.1 健康检查
+### 5.1 健康检查
 
 ```http
 GET /api/health
@@ -361,7 +399,29 @@ GET /api/health
 
 返回 `ServiceHealth`，用于确认服务启动。
 
-### 4.2 工单列表
+### 5.2 当前坐席信息
+
+```http
+GET /api/workbench/me
+```
+
+响应：
+
+```json
+{
+  "operatorId": "agent_001",
+  "principalType": "AGENT",
+  "roles": ["AGENT"],
+  "authSource": "DEV_FALLBACK"
+}
+```
+
+用途：
+
+- 前端后续移除固定 `DEFAULT_OPERATOR_ID` 时，用该接口获取当前坐席。
+- `authSource` 用于开发期排查当前身份来源。
+
+### 5.3 工单列表
 
 ```http
 GET /api/workbench/tickets
@@ -397,7 +457,7 @@ Invoke-RestMethod `
   -Uri "http://localhost:8083/api/workbench/tickets?status=PENDING&riskLevel=L3&intent=refund.apply&pageNo=1&pageSize=20"
 ```
 
-### 4.3 工单统计
+### 5.4 工单统计
 
 ```http
 GET /api/workbench/tickets/stats
@@ -411,7 +471,7 @@ ApiResponse<TicketStatsView>
 
 用于坐席工作台列表页顶部展示总工单、待处理、处理中、已完成和超时风险。
 
-### 4.4 工单详情
+### 5.5 工单详情
 
 ```http
 GET /api/workbench/tickets/{ticketId}
@@ -431,7 +491,7 @@ ApiResponse<TicketDetail>
 - 当前会话最近消息
 - 工单操作日志
 
-### 4.5 工单操作日志
+### 5.6 工单操作日志
 
 ```http
 GET /api/workbench/tickets/{ticketId}/actions
@@ -453,7 +513,7 @@ ApiResponse<ActionLogView[]>
 - 备注：展示 `comment`，用于坐席处理说明或内部协作记录。
 - 动作数据：`actionData` 保留为可展开 JSON，用于排查 payload、子动作和审计上下文。
 
-### 4.6 添加内部备注
+### 5.7 添加内部备注
 
 ```http
 POST /api/workbench/tickets/{ticketId}/notes
@@ -499,7 +559,7 @@ ApiResponse<ActionResult>
 source infra/sql/08-work-order-internal-note-action.sql;
 ```
 
-### 4.7 领取工单
+### 5.8 领取工单
 
 ```http
 POST /api/workbench/tickets/{ticketId}/claim
@@ -539,7 +599,7 @@ interface OperatorActionRequest {
 ApiResponse<ActionResult>
 ```
 
-### 4.8 审批通过
+### 5.9 审批通过
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/approve
@@ -576,7 +636,7 @@ interface ApprovalDecisionRequest {
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核通过结果
 
-### 4.9 审批驳回
+### 5.10 审批驳回
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/reject
@@ -591,7 +651,7 @@ POST /api/workbench/tickets/{ticketId}/approval/reject
 - 写入审批动作、工单动作和审计日志
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核驳回结果
 
-### 4.10 要求补充材料
+### 5.11 要求补充材料
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/request-materials
@@ -617,7 +677,7 @@ POST /api/workbench/tickets/{ticketId}/approval/request-materials
 - 写入审批动作和审计日志。
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到补充材料要求。
 
-### 4.11 审批转人工接管
+### 5.12 审批转人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/approval/transfer-takeover
@@ -644,7 +704,7 @@ POST /api/workbench/tickets/{ticketId}/approval/transfer-takeover
 - 写入审批动作、工单动作和审计日志。
 - `cs_message` 新增一条 `SYSTEM` 用户可见消息，提示用户已转人工继续处理。
 
-### 4.12 开始人工接管
+### 5.13 开始人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/start
@@ -669,7 +729,7 @@ interface OperatorActionRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，提示人工客服已接入
 
-### 4.13 发送人工接管消息
+### 5.14 发送人工接管消息
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/messages
@@ -710,7 +770,7 @@ interface TakeoverMessageRequest {
 ApiResponse<ActionResult>
 ```
 
-### 4.14 结束人工接管
+### 5.15 结束人工接管
 
 ```http
 POST /api/workbench/tickets/{ticketId}/takeover/finish
@@ -746,7 +806,7 @@ interface TakeoverFinishRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，用户端通过会话消息列表可看到人工处理结束结果
 
-## 5. 前端实现建议
+## 6. 前端实现建议
 
 当前可以实现坐席工作台最小页面：
 

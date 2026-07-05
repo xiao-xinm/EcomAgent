@@ -21,6 +21,39 @@ interface ApiResponse<T> {
 }
 ```
 
+## 0. 身份头兼容说明
+
+Phase 8 第一轮已在 Gateway 增加身份上下文兼容层。当前仍兼容请求体里的 `userId`，后续会逐步改为以 Token 或可信身份头为准。
+
+推荐后续生产形态：
+
+```http
+Authorization: Bearer <access_token>
+```
+
+当前本地开发可使用：
+
+```http
+X-SmartCS-User-Id: u1001
+X-SmartCS-Roles: CUSTOMER
+```
+
+Gateway 解析到身份后，会向 Agent Core 透传：
+
+```http
+X-SmartCS-Principal-Id: u1001
+X-SmartCS-Principal-Type: CUSTOMER
+X-SmartCS-Roles: CUSTOMER
+X-SmartCS-Auth-Source: DEV_HEADER | LEGACY_BODY | STANDARD_HEADER
+```
+
+兼容规则：
+
+- 请求头 `X-SmartCS-Principal-Id` + `X-SmartCS-Principal-Type=CUSTOMER` 优先级最高。
+- 其次使用开发头 `X-SmartCS-User-Id`。
+- 如果没有身份头，继续使用请求体 `userId`，并标记为 `LEGACY_BODY`。
+- 本阶段不强制鉴权，不校验 JWT 签名，不引入 Redis Session。
+
 ## 1. 发送自然语言消息
 
 ```http

@@ -2,7 +2,9 @@ package com.smartcs.agent.gateway.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.smartcs.agent.common.auth.AuthHeaders;
 import com.smartcs.agent.common.domain.ChatMessageView;
+import com.smartcs.agent.gateway.auth.GatewayIdentityResolver;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -65,10 +67,11 @@ class ChatControllerTest {
                                 }
                                 """)
                         .build())),
-                "http://agent-core");
+                "http://agent-core",
+                new GatewayIdentityResolver());
 
         ServerSentEvent<Object> event = controller
-                .streamSessionEvents("s_test", "m1", 100, 1000)
+                .streamSessionEvents(HttpHeaders.EMPTY, "s_test", "m1", 100, 1000)
                 .filter(candidate -> "message.created".equals(candidate.event()))
                 .blockFirst(Duration.ofSeconds(2));
 
@@ -78,5 +81,19 @@ class ChatControllerTest {
         ChatMessageView message = (ChatMessageView) event.data();
         assertThat(message.messageId()).isEqualTo("m2");
         assertThat(message.role()).isEqualTo("HUMAN_AGENT");
+    }
+
+    @Test
+    void identityResolverPrefersDevHeaderUserIdOverLegacyBody() {
+        GatewayIdentityResolver resolver = new GatewayIdentityResolver();
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(AuthHeaders.DEV_USER_ID, "u2002");
+
+        var principal = resolver.resolveCustomer(headers, "u1001").orElseThrow();
+
+        assertThat(principal.principalId()).isEqualTo("u2002");
+        assertThat(principal.principalType().name()).isEqualTo("CUSTOMER");
+        assertThat(principal.roles()).containsExactly("CUSTOMER");
+        assertThat(principal.authSource().name()).isEqualTo("DEV_HEADER");
     }
 }

@@ -8,12 +8,16 @@ import com.smartcs.agent.common.domain.ChatSessionView;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.util.TraceIds;
+import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
+import com.smartcs.agent.gateway.auth.GatewayIdentityResolver;
 import jakarta.validation.Valid;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,9 +26,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -58,29 +64,37 @@ public class ChatController {
     private static final int MAX_MESSAGE_LIMIT = 200;
 
     private final WebClient agentCoreClient;
+    private final GatewayIdentityResolver identityResolver;
 
     public ChatController(
             WebClient.Builder webClientBuilder,
-            @Value("${smartcs.agent-core.base-url:http://localhost:8081}") String agentCoreBaseUrl) {
+            @Value("${smartcs.agent-core.base-url:http://localhost:8081}") String agentCoreBaseUrl,
+            GatewayIdentityResolver identityResolver) {
         this.agentCoreClient = webClientBuilder.baseUrl(agentCoreBaseUrl).build();
+        this.identityResolver = identityResolver;
     }
 
     @PostMapping(
             value = "/api/chat/messages",
             consumes = APPLICATION_JSON_UTF8,
             produces = APPLICATION_JSON_UTF8)
-    public Mono<ApiResponse<AgentReply>> sendMessage(@Valid @RequestBody ChatRequest request) {
-        ChatRequest normalized = normalize(request);
+    public Mono<ApiResponse<AgentReply>> sendMessage(
+            @RequestHeader HttpHeaders headers,
+            @Valid @RequestBody ChatRequest request) {
+        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, request.userId());
+        ChatRequest normalized = normalize(request, principal);
         LOGGER.info(
-                "Gateway收到聊天请求 traceId={} sessionId={} userId={} channel={} contentLength={}",
+                "Gateway收到聊天请求 traceId={} sessionId={} userId={} channel={} authSource={} contentLength={}",
                 normalized.traceId(),
                 normalized.sessionId(),
                 normalized.userId(),
                 normalized.channel(),
+                principal.map(value -> value.authSource().name()).orElse("NONE"),
                 contentLength(normalized.content()));
         return agentCoreClient.post()
                 .uri("/api/agent/chat")
                 .header(REQUEST_ID_HEADER, normalized.traceId())
+                .headers(outgoingHeaders -> applyIdentityHeaders(outgoingHeaders, principal))
                 .contentType(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .bodyValue(normalized)
@@ -102,19 +116,24 @@ public class ChatController {
             value = "/api/chat/actions",
             consumes = APPLICATION_JSON_UTF8,
             produces = APPLICATION_JSON_UTF8)
-    public Mono<ApiResponse<AgentReply>> handleAction(@Valid @RequestBody ChatActionRequest request) {
-        ChatActionRequest normalized = normalizeAction(request);
+    public Mono<ApiResponse<AgentReply>> handleAction(
+            @RequestHeader HttpHeaders headers,
+            @Valid @RequestBody ChatActionRequest request) {
+        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, request.userId());
+        ChatActionRequest normalized = normalizeAction(request, principal);
         LOGGER.info(
-                "Gateway收到聊天动作 traceId={} sessionId={} userId={} channel={} actionType={} actionId={}",
+                "Gateway收到聊天动作 traceId={} sessionId={} userId={} channel={} authSource={} actionType={} actionId={}",
                 normalized.traceId(),
                 normalized.sessionId(),
                 normalized.userId(),
                 normalized.channel(),
+                principal.map(value -> value.authSource().name()).orElse("NONE"),
                 normalized.actionType(),
                 normalized.actionId());
         return agentCoreClient.post()
                 .uri("/api/agent/actions")
                 .header(REQUEST_ID_HEADER, normalized.traceId())
+                .headers(outgoingHeaders -> applyIdentityHeaders(outgoingHeaders, principal))
                 .contentType(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .bodyValue(normalized)
@@ -134,12 +153,21 @@ public class ChatController {
     }
 
     @GetMapping(value = "/api/chat/sessions/{sessionId}", produces = APPLICATION_JSON_UTF8)
-    public Mono<ApiResponse<ChatSessionView>> getSession(@PathVariable String sessionId) {
+    public Mono<ApiResponse<ChatSessionView>> getSession(
+            @RequestHeader HttpHeaders headers,
+            @PathVariable String sessionId) {
         String traceId = TraceIds.newTraceId();
-        LOGGER.info("Gateway查询会话状态 traceId={} sessionId={}", traceId, sessionId);
+        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, null);
+        LOGGER.info(
+                "Gateway查询会话状态 traceId={} sessionId={} principalId={} authSource={}",
+                traceId,
+                sessionId,
+                principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
+                principal.map(value -> value.authSource().name()).orElse("NONE"));
         return agentCoreClient.get()
                 .uri("/api/agent/sessions/{sessionId}", sessionId)
                 .header(REQUEST_ID_HEADER, traceId)
+                .headers(outgoingHeaders -> applyIdentityHeaders(outgoingHeaders, principal))
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .retrieve()
                 .bodyToMono(CHAT_SESSION_TYPE)
@@ -156,12 +184,20 @@ public class ChatController {
 
     @GetMapping(value = "/api/chat/sessions/{sessionId}/messages", produces = APPLICATION_JSON_UTF8)
     public Mono<ApiResponse<List<ChatMessageView>>> listMessages(
+            @RequestHeader HttpHeaders headers,
             @PathVariable String sessionId,
             @RequestParam(defaultValue = "100") int limit) {
         String traceId = TraceIds.newTraceId();
         int normalizedLimit = normalizeLimit(limit);
-        LOGGER.info("Gateway查询会话消息 traceId={} sessionId={} limit={}", traceId, sessionId, normalizedLimit);
-        return fetchSessionMessages(sessionId, normalizedLimit, traceId)
+        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, null);
+        LOGGER.info(
+                "Gateway查询会话消息 traceId={} sessionId={} principalId={} authSource={} limit={}",
+                traceId,
+                sessionId,
+                principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
+                principal.map(value -> value.authSource().name()).orElse("NONE"),
+                normalizedLimit);
+        return fetchSessionMessages(sessionId, normalizedLimit, traceId, principal)
                 .doOnNext(response -> LOGGER.info(
                         "Gateway完成会话消息查询 traceId={} sessionId={} code={}",
                         traceId,
@@ -175,6 +211,7 @@ public class ChatController {
 
     @GetMapping(value = "/api/chat/sessions/{sessionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<Object>> streamSessionEvents(
+            @RequestHeader HttpHeaders headers,
             @PathVariable String sessionId,
             @RequestParam(required = false) String lastMessageId,
             @RequestParam(defaultValue = "100") int limit,
@@ -182,19 +219,22 @@ public class ChatController {
         String streamId = TraceIds.newTraceId();
         int normalizedLimit = normalizeLimit(limit);
         long normalizedIntervalMs = normalizeSseInterval(intervalMs);
+        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, null);
         Set<String> emittedMessageIds = ConcurrentHashMap.newKeySet();
         AtomicBoolean firstFetch = new AtomicBoolean(true);
         LOGGER.info(
-                "Gateway打开会话SSE streamId={} sessionId={} lastMessageId={} limit={} intervalMs={}",
+                "Gateway打开会话SSE streamId={} sessionId={} principalId={} authSource={} lastMessageId={} limit={} intervalMs={}",
                 streamId,
                 sessionId,
+                principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
+                principal.map(value -> value.authSource().name()).orElse("NONE"),
                 lastMessageId,
                 normalizedLimit,
                 normalizedIntervalMs);
 
         Flux<ServerSentEvent<Object>> messageEvents = Flux
                 .interval(Duration.ZERO, Duration.ofMillis(normalizedIntervalMs))
-                .concatMap(tick -> fetchSessionMessages(sessionId, normalizedLimit, TraceIds.newTraceId())
+                .concatMap(tick -> fetchSessionMessages(sessionId, normalizedLimit, TraceIds.newTraceId(), principal)
                         .map(response -> unseenMessages(response, emittedMessageIds, lastMessageId, firstFetch))
                         .onErrorResume(error -> {
                             LOGGER.warn("Gateway SSE拉取消息失败 streamId={} sessionId={}", streamId, sessionId, error);
@@ -224,13 +264,15 @@ public class ChatController {
     private Mono<ApiResponse<List<ChatMessageView>>> fetchSessionMessages(
             String sessionId,
             int limit,
-            String traceId) {
+            String traceId,
+            Optional<AuthenticatedPrincipal> principal) {
         return agentCoreClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/agent/sessions/{sessionId}/messages")
                         .queryParam("limit", limit)
                         .build(sessionId))
                 .header(REQUEST_ID_HEADER, traceId)
+                .headers(outgoingHeaders -> applyIdentityHeaders(outgoingHeaders, principal))
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .retrieve()
                 .bodyToMono(CHAT_MESSAGES_TYPE);
@@ -274,31 +316,43 @@ public class ChatController {
         return result;
     }
 
-    private ChatRequest normalize(ChatRequest request) {
+    private ChatRequest normalize(ChatRequest request, Optional<AuthenticatedPrincipal> principal) {
         // 前端可以不传 traceId/sessionId；Gateway 统一补齐，方便后端全链路排查。
         String traceId = hasText(request.traceId()) ? request.traceId() : TraceIds.newTraceId();
         String sessionId = hasText(request.sessionId()) ? request.sessionId() : "s_" + UUID.randomUUID();
         String channel = hasText(request.channel()) ? request.channel() : "h5";
         Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
-        return new ChatRequest(traceId, sessionId, request.userId(), channel, request.content(), metadata);
+        String userId = principal.map(AuthenticatedPrincipal::principalId).orElse(request.userId());
+        return new ChatRequest(traceId, sessionId, userId, channel, request.content(), metadata);
     }
 
-    private ChatActionRequest normalizeAction(ChatActionRequest request) {
+    private ChatActionRequest normalizeAction(ChatActionRequest request, Optional<AuthenticatedPrincipal> principal) {
         // 动作请求必须沿用原 sessionId，traceId 可由 Gateway 补齐。
         String traceId = hasText(request.traceId()) ? request.traceId() : TraceIds.newTraceId();
         String channel = hasText(request.channel()) ? request.channel() : "h5";
         Map<String, Object> payload = request.payload() == null ? Map.of() : request.payload();
         Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
+        String userId = principal.map(AuthenticatedPrincipal::principalId).orElse(request.userId());
         return new ChatActionRequest(
                 traceId,
                 request.sessionId(),
-                request.userId(),
+                userId,
                 channel,
                 request.actionId(),
                 request.actionType(),
                 request.content(),
                 payload,
                 metadata);
+    }
+
+    private void applyIdentityHeaders(HttpHeaders headers, Optional<AuthenticatedPrincipal> principal) {
+        principal.ifPresent(value -> {
+            headers.set(AuthHeaders.PRINCIPAL_ID, value.principalId());
+            headers.set(AuthHeaders.PRINCIPAL_TYPE, value.principalType().name());
+            headers.set(AuthHeaders.ROLES, value.rolesCsv());
+            headers.set(AuthHeaders.PERMISSIONS, value.permissionsCsv());
+            headers.set(AuthHeaders.AUTH_SOURCE, value.authSource().name());
+        });
     }
 
     private void logAgentCoreResponse(ChatRequest request, ApiResponse<AgentReply> response) {

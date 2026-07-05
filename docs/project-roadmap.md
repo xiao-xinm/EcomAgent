@@ -281,7 +281,10 @@
 
 - 已新增登录鉴权与权限方案文档：`docs/auth-permission-plan.md`。
 - 第一轮结论是不引入 Redis Session，优先做无状态 Token / JWT 兼容方案。
-- Phase 8 代码实现应先增加身份上下文和开发兼容头，再逐步收紧 `userId` / `operatorId` 的可信来源。
+- 已新增 `smartcs-common` 身份上下文模型和标准身份头常量。
+- Gateway 已支持标准身份头、开发用户头和旧请求体 `userId` 的兼容解析，并向 Agent Core 透传标准身份头。
+- Workbench 已支持标准身份头、开发坐席头和旧请求体 `operatorId` 的兼容解析，并新增 `GET /api/workbench/me`。
+- 下一轮应推进前端使用当前身份接口 / 开发头，逐步减少固定 `userId` / `operatorId`。
 
 中间件要求：
 

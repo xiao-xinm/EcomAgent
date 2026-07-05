@@ -2,6 +2,16 @@
 
 本文档对应 `docs/project-roadmap.md` 的 Phase 8，用于约束后续登录鉴权、身份传递和权限校验的实现顺序。当前阶段只定义方案和迁移路径，不直接修改后端接口、不新增数据库表、不引入 Redis。
 
+## 0. 当前落地进展
+
+截至 Phase 8 第一轮代码：
+
+- `smartcs-common` 已新增身份上下文模型：`AuthenticatedPrincipal`、`PrincipalType`、`AuthSource`、`AuthHeaders`、`AuthRoles`。
+- `smartcs-gateway` 已支持从标准身份头、开发用户头或旧请求体 `userId` 解析用户身份，并向 Agent Core 透传标准身份头。
+- `smartcs-workbench` 已支持从标准身份头、开发坐席头或旧请求体 `operatorId` 解析坐席身份，并用解析后的坐席 ID 写入现有操作请求。
+- `smartcs-workbench` 已新增 `GET /api/workbench/me`，供坐席前端后续移除固定 `DEFAULT_OPERATOR_ID`。
+- 当前仍是兼容模式：不强制登录、不校验 JWT 签名、不新增 Redis Session。
+
 ## 1. 当前问题
 
 当前最小闭环为了方便本地联调，仍使用开发态身份：
@@ -168,6 +178,7 @@ X-SmartCS-Roles: CUSTOMER,AGENT
    - 请求体仍允许 `userId` / `operatorId`。
    - 后端开始解析 Token 或开发兼容头。
    - 未提供身份时，开发环境继续允许现有默认链路。
+   - 当前代码已完成身份上下文、标准身份头透传、开发兼容头和 Workbench 当前坐席接口。
 
 2. **兼容期 B：可信身份优先**
    - 后端以可信身份覆盖请求体身份。

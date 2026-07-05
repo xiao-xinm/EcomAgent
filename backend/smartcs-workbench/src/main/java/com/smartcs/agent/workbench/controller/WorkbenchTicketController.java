@@ -3,9 +3,12 @@ package com.smartcs.agent.workbench.controller;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.common.util.TraceIds;
+import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
+import com.smartcs.agent.workbench.auth.WorkbenchIdentityResolver;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionLogView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalDecisionRequest;
+import com.smartcs.agent.workbench.ticket.WorkbenchDtos.CurrentOperatorView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.InternalNoteRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverFinishRequest;
@@ -15,8 +18,12 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
 import jakarta.validation.Valid;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,9 +39,18 @@ public class WorkbenchTicketController {
     private static final String APPLICATION_JSON_UTF8 = "application/json;charset=UTF-8";
 
     private final WorkbenchTicketService ticketService;
+    private final WorkbenchIdentityResolver identityResolver;
 
-    public WorkbenchTicketController(WorkbenchTicketService ticketService) {
+    public WorkbenchTicketController(WorkbenchTicketService ticketService, WorkbenchIdentityResolver identityResolver) {
         this.ticketService = ticketService;
+        this.identityResolver = identityResolver;
+    }
+
+    @GetMapping(value = "/api/workbench/me", produces = APPLICATION_JSON_UTF8)
+    public ApiResponse<CurrentOperatorView> getCurrentOperator(@RequestHeader HttpHeaders headers) {
+        String traceId = TraceIds.newTraceId();
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, null);
+        return ApiResponse.success(toCurrentOperatorView(principal), traceId);
     }
 
     @GetMapping(value = "/api/workbench/tickets", produces = APPLICATION_JSON_UTF8)
@@ -90,9 +106,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> addInternalNote(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody InternalNoteRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.addInternalNote(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.addInternalNote(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -101,9 +118,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> claim(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody OperatorActionRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.claim(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.claim(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -112,9 +130,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> approve(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody ApprovalDecisionRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.approve(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.approve(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -123,9 +142,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> reject(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody ApprovalDecisionRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.reject(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.reject(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -134,9 +154,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> requestMaterials(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody ApprovalDecisionRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.requestMaterials(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.requestMaterials(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -145,9 +166,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> transferToTakeover(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody ApprovalDecisionRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.transferToTakeover(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.transferToTakeover(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -156,9 +178,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> startTakeover(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody OperatorActionRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.startTakeover(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.startTakeover(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -167,9 +190,10 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> sendTakeoverMessage(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody TakeoverMessageRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.sendTakeoverMessage(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.sendTakeoverMessage(ticketId, withOperator(request, headers)), traceId);
     }
 
     @PostMapping(
@@ -178,8 +202,52 @@ public class WorkbenchTicketController {
             produces = APPLICATION_JSON_UTF8)
     public ApiResponse<ActionResult> finishTakeover(
             @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers,
             @Valid @RequestBody TakeoverFinishRequest request) {
         String traceId = TraceIds.newTraceId();
-        return ApiResponse.success(ticketService.finishTakeover(ticketId, request), traceId);
+        return ApiResponse.success(ticketService.finishTakeover(ticketId, withOperator(request, headers)), traceId);
+    }
+
+    private CurrentOperatorView toCurrentOperatorView(AuthenticatedPrincipal principal) {
+        List<String> roles = new ArrayList<>(principal.roles());
+        Collections.sort(roles);
+        return new CurrentOperatorView(
+                principal.principalId(),
+                principal.principalType().name(),
+                roles,
+                principal.authSource().name());
+    }
+
+    private OperatorActionRequest withOperator(OperatorActionRequest request, HttpHeaders headers) {
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        return new OperatorActionRequest(principal.principalId(), request.comment(), request.payload());
+    }
+
+    private ApprovalDecisionRequest withOperator(ApprovalDecisionRequest request, HttpHeaders headers) {
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        return new ApprovalDecisionRequest(
+                principal.principalId(),
+                request.comment(),
+                request.decisionType(),
+                request.result());
+    }
+
+    private TakeoverFinishRequest withOperator(TakeoverFinishRequest request, HttpHeaders headers) {
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        return new TakeoverFinishRequest(
+                principal.principalId(),
+                request.comment(),
+                request.resolutionStatus(),
+                request.result());
+    }
+
+    private TakeoverMessageRequest withOperator(TakeoverMessageRequest request, HttpHeaders headers) {
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        return new TakeoverMessageRequest(principal.principalId(), request.content(), request.payload());
+    }
+
+    private InternalNoteRequest withOperator(InternalNoteRequest request, HttpHeaders headers) {
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        return new InternalNoteRequest(principal.principalId(), request.comment(), request.payload());
     }
 }

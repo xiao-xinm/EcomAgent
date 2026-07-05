@@ -45,6 +45,14 @@ public final class WorkbenchDtos {
     ) {
     }
 
+    public record CurrentOperatorView(
+            String operatorId,
+            String principalType,
+            List<String> roles,
+            String authSource
+    ) {
+    }
+
     public record WorkOrderView(
             String ticketId,
             String traceId,
