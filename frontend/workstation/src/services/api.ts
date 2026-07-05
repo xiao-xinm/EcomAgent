@@ -16,6 +16,22 @@ import type {
   ActionLogView,
 } from "../types/workbench";
 
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  "1002": "登录已过期，请重新进入坐席工作台",
+  "1003": "当前坐席账号没有权限执行该操作",
+};
+
+export class WorkbenchApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+    public readonly status?: number,
+  ) {
+    super(message);
+    this.name = "WorkbenchApiError";
+  }
+}
+
 const baseURL =
   import.meta.env.VITE_WORKSTATION_API_BASE_URL || "http://localhost:8083";
 const defaultOperatorId =
@@ -37,15 +53,52 @@ const client = axios.create({
 
 let currentOperatorPromise: Promise<CurrentOperatorView> | null = null;
 
+function authErrorMessage(code?: string, status?: number): string | null {
+  if (code && AUTH_ERROR_MESSAGES[code]) {
+    return AUTH_ERROR_MESSAGES[code];
+  }
+  if (status === 401) return AUTH_ERROR_MESSAGES["1002"];
+  if (status === 403) return AUTH_ERROR_MESSAGES["1003"];
+  return null;
+}
+
+function apiResponseError<T>(data: ApiResponse<T>, status?: number): WorkbenchApiError {
+  return new WorkbenchApiError(
+    authErrorMessage(data.code, status) || data.message || `API error ${data.code}`,
+    data.code,
+    status,
+  );
+}
+
+function normalizeError(error: unknown): Error {
+  if (error instanceof WorkbenchApiError) {
+    return error;
+  }
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const data = error.response?.data as Partial<ApiResponse<unknown>> | undefined;
+    const code = typeof data?.code === "string" ? data.code : undefined;
+    const message = authErrorMessage(code, status)
+      || (typeof data?.message === "string" && data.message)
+      || error.message;
+    return new WorkbenchApiError(message, code, status);
+  }
+  return error instanceof Error ? error : new Error("请求失败，请稍后重试");
+}
+
 async function unwrap<T>(promise: Promise<{ data: ApiResponse<T> }>): Promise<T> {
-  const { data } = await promise;
-  if (data.code !== "0000") {
-    throw new Error(data.message || `API error ${data.code}`);
+  try {
+    const { data } = await promise;
+    if (data.code !== "0000") {
+      throw apiResponseError(data);
+    }
+    if (data.data === null) {
+      throw new Error("Empty response data");
+    }
+    return data.data;
+  } catch (error) {
+    throw normalizeError(error);
   }
-  if (data.data === null) {
-    throw new Error("Empty response data");
-  }
-  return data.data;
 }
 
 export async function fetchCurrentOperator(

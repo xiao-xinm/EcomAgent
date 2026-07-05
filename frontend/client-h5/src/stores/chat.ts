@@ -5,6 +5,8 @@ import {
   sendAction,
   getSessionMessages,
   createSessionEventSource,
+  chatRequestErrorMessage,
+  chatResponseErrorMessage,
 } from '@/services/api'
 import type { ChatMessage } from '@/types/chat'
 import type { ChatRequest, ChatMessageView, QuickAction } from '@/types/api'
@@ -144,7 +146,7 @@ export const useChatStore = defineStore('chat', () => {
       return false
     } catch (err) {
       if (!options.silent && !options.suppressError) {
-        error.value = err instanceof Error ? err.message : '消息同步失败'
+        error.value = chatRequestErrorMessage(err, '消息同步失败')
       }
       return false
     } finally {
@@ -300,22 +302,23 @@ export const useChatStore = defineStore('chat', () => {
         addMessage(agentMsg)
         await syncMessages({ silent: true, force: true })
       } else {
+        const message = chatResponseErrorMessage(response, '服务暂时不可用，请稍后重试')
         const agentMsg: ChatMessage = {
           id: generateId(),
           role: 'agent',
           backendRole: 'AGENT',
           messageType: 'TEXT',
-          content: response.message || '服务暂时不可用，请稍后重试',
+          content: message,
           timestamp: Date.now(),
           status: 'sent',
           metadata: {},
         }
         addMessage(agentMsg)
-        error.value = response.message
+        error.value = message
       }
     } catch (err) {
       updateMessage(userMsg.id, { status: 'failed', retryPayload: { content: trimmed, sessionId: sessionId.value } })
-      error.value = err instanceof Error ? err.message : '网络错误，请检查连接'
+      error.value = chatRequestErrorMessage(err, '网络错误，请检查连接')
     } finally {
       loading.value = false
     }
@@ -392,22 +395,23 @@ export const useChatStore = defineStore('chat', () => {
         addMessage(agentMsg)
         await syncMessages({ silent: true, force: true })
       } else {
+        const message = chatResponseErrorMessage(response, '操作失败，请稍后重试')
         const agentMsg: ChatMessage = {
           id: generateId(),
           role: 'agent',
           backendRole: 'AGENT',
           messageType: 'TEXT',
-          content: response.message || '操作失败，请稍后重试',
+          content: message,
           timestamp: Date.now(),
           status: 'sent',
           metadata: {},
         }
         addMessage(agentMsg)
-        error.value = response.message
+        error.value = message
       }
     } catch (err) {
       updateMessage(userMsg.id, { status: 'failed' })
-      error.value = err instanceof Error ? err.message : '网络错误，请检查连接'
+      error.value = chatRequestErrorMessage(err, '网络错误，请检查连接')
     } finally {
       loading.value = false
     }

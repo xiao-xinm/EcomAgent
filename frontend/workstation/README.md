@@ -20,3 +20,5 @@ Authorization: Bearer <VITE_WORKSTATION_AUTH_TOKEN>
 ```
 
 `VITE_WORKSTATION_AUTH_TOKEN` 为空时不会发送 `Authorization`。
+
+鉴权失败时，坐席工作台会把 `401` / `1002` 显示为登录过期，把 `403` / `1003` 显示为当前坐席无权执行操作。

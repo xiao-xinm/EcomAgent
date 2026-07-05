@@ -82,6 +82,7 @@ Workbench 操作接口的兼容规则：
 - 如果没有身份头，继续使用请求体 `operatorId`，并标记为 `LEGACY_BODY`。
 - `GET /api/workbench/me` 没有请求体，本地开发会回退到 `agent_001`，并标记为 `DEV_FALLBACK`。
 - 本阶段不强制鉴权，不校验 JWT 签名，不引入 Redis Session。
+- 坐席前端已将 `401` / `1002` 映射为“登录已过期”，将 `403` / `1003` 映射为“没有权限执行该操作”。
 
 ## 3. 状态枚举
 

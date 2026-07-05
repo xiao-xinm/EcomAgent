@@ -15,3 +15,5 @@ Authorization: Bearer <VITE_AUTH_TOKEN>
 ```
 
 `VITE_AUTH_TOKEN` 为空时不会发送 `Authorization`。SSE 使用浏览器 `EventSource`，当前不能附加自定义 Header，因此强制鉴权前需要单独确认 Cookie 或 query token 策略。
+
+鉴权失败时，H5 会把 `401` / `1002` 显示为登录过期，把 `403` / `1003` 显示为无权访问当前会话。
