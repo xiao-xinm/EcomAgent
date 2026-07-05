@@ -15,6 +15,7 @@ import {
   Spin,
   Tag,
   Timeline,
+  Tooltip,
   Typography,
 } from "antd";
 import {
@@ -39,12 +40,23 @@ import {
   finishTakeover,
   addInternalNote,
   sendTakeoverMessage,
+  fetchCurrentOperator,
 } from "../../services/api";
 import type {
   ActionLogView,
   ApprovalTaskView,
+  CurrentOperatorView,
   TicketDetail as TicketDetailType,
 } from "../../types/workbench";
+import {
+  canAddInternalNote,
+  canClaimTicket,
+  canFinishTakeover,
+  canReviewTicket,
+  canSendTakeoverMessage,
+  canStartTakeover,
+  type PermissionCheck,
+} from "../../utils/permissions";
 import {
   WORK_ORDER_STATUS_MAP,
   APPROVAL_STATUS_MAP,
@@ -210,11 +222,36 @@ function isExchangeApproval(
   return approval?.approvalType === "EXCHANGE";
 }
 
+function permissionReason(
+  permission: PermissionCheck,
+  operatorLoading: boolean,
+) {
+  return operatorLoading ? "正在加载坐席身份" : permission.reason;
+}
+
+function renderPermissionButton(
+  button: React.ReactElement,
+  permission: PermissionCheck,
+  operatorLoading: boolean,
+) {
+  const disabled = operatorLoading || !permission.allowed;
+  if (!disabled) {
+    return button;
+  }
+  return (
+    <Tooltip title={permissionReason(permission, operatorLoading)}>
+      <span>{React.cloneElement(button, { disabled: true })}</span>
+    </Tooltip>
+  );
+}
+
 const TicketDetailPage: React.FC = () => {
   const { ticketId } = useParams<{ ticketId: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<TicketDetailType | null>(null);
+  const [currentOperator, setCurrentOperator] = useState<CurrentOperatorView | null>(null);
+  const [operatorLoading, setOperatorLoading] = useState(true);
   const [commentModal, setCommentModal] = useState<{
     open: boolean;
     action: string;
@@ -243,6 +280,31 @@ const TicketDetailPage: React.FC = () => {
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  useEffect(() => {
+    let mounted = true;
+    setOperatorLoading(true);
+    fetchCurrentOperator()
+      .then((operator) => {
+        if (mounted) {
+          setCurrentOperator(operator);
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          setCurrentOperator(null);
+          message.error((err as Error).message || "当前坐席身份加载失败");
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setOperatorLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const withComment = (action: string, fn: (comment: string) => Promise<void>) => {
     setCommentValue("");
@@ -324,6 +386,13 @@ const TicketDetailPage: React.FC = () => {
     });
 
   const handleAddInternalNote = async () => {
+    const permission = canAddInternalNote(currentOperator);
+    if (operatorLoading || !permission.allowed) {
+      message.warning(
+        operatorLoading ? "正在加载坐席身份" : permission.reason || "当前账号没有操作权限",
+      );
+      return;
+    }
     const comment = internalNote.trim();
     if (!comment) {
       message.warning("请输入内部备注");
@@ -346,6 +415,15 @@ const TicketDetailPage: React.FC = () => {
   };
 
   const handleSendTakeoverMessage = async () => {
+    if (detail) {
+      const permission = canSendTakeoverMessage(currentOperator, detail);
+      if (operatorLoading || !permission.allowed) {
+        message.warning(
+          operatorLoading ? "正在加载坐席身份" : permission.reason || "当前账号没有操作权限",
+        );
+        return;
+      }
+    }
     const content = takeoverMessage.trim();
     if (!content) {
       message.warning("请输入要发送给用户的消息");
@@ -394,17 +472,24 @@ const TicketDetailPage: React.FC = () => {
     ticket.status,
   );
 
-  const canClaim = ticket.status === "PENDING";
-  const canApprove =
+  const showClaim = ticket.status === "PENDING";
+  const showApprovalActions =
     approval &&
     !isTerminalTicket &&
     (approval.status === "PENDING" || approval.status === "CLAIMED");
-  const canStartTakeover =
+  const showStartTakeover =
     !isTerminalTicket &&
     (!takeover || ["REQUESTED", "QUEUED", "ASSIGNED"].includes(takeover.status));
-  const canFinishTakeover =
+  const showFinishTakeover =
     !isTerminalTicket && takeover && takeover.status === "IN_PROGRESS";
-  const canSendTakeoverMessage = takeover?.status === "IN_PROGRESS";
+  const claimPermission = canClaimTicket(currentOperator, ticket);
+  const approvalPermission = canReviewTicket(currentOperator, detail);
+  const startTakeoverPermission = canStartTakeover(currentOperator, detail);
+  const finishTakeoverPermission = canFinishTakeover(currentOperator, detail);
+  const takeoverMessagePermission = canSendTakeoverMessage(currentOperator, detail);
+  const internalNotePermission = canAddInternalNote(currentOperator);
+  const canSendHumanMessage = !operatorLoading && takeoverMessagePermission.allowed;
+  const canAddNote = !operatorLoading && internalNotePermission.allowed;
 
   return (
     <div style={{ padding: 16 }}>
@@ -429,17 +514,23 @@ const TicketDetailPage: React.FC = () => {
           </Title>
         </Space>
         <Space>
-          {canClaim && (
-            <Button type="primary" icon={<TeamOutlined />} onClick={handleClaim}>
-              领取工单
-            </Button>
+          {showClaim && (
+            renderPermissionButton(
+              <Button type="primary" icon={<TeamOutlined />} onClick={handleClaim}>
+                领取工单
+              </Button>,
+              claimPermission,
+              operatorLoading,
+            )
           )}
-          {canApprove && (
+          {showApprovalActions && (
             <>
               <Button
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 onClick={handleApprove}
+                disabled={operatorLoading || !approvalPermission.allowed}
+                title={permissionReason(approvalPermission, operatorLoading)}
               >
                 审批通过
               </Button>
@@ -447,24 +538,46 @@ const TicketDetailPage: React.FC = () => {
                 danger
                 icon={<CloseCircleOutlined />}
                 onClick={handleReject}
+                disabled={operatorLoading || !approvalPermission.allowed}
+                title={permissionReason(approvalPermission, operatorLoading)}
               >
                 审批驳回
               </Button>
-              <Button icon={<MessageOutlined />} onClick={handleRequestMaterials}>
+              <Button
+                icon={<MessageOutlined />}
+                onClick={handleRequestMaterials}
+                disabled={operatorLoading || !approvalPermission.allowed}
+                title={permissionReason(approvalPermission, operatorLoading)}
+              >
                 要求补充材料
               </Button>
-              <Button icon={<LoginOutlined />} onClick={handleTransferToTakeover}>
+              <Button
+                icon={<LoginOutlined />}
+                onClick={handleTransferToTakeover}
+                disabled={operatorLoading || !approvalPermission.allowed}
+                title={permissionReason(approvalPermission, operatorLoading)}
+              >
                 转人工接管
               </Button>
             </>
           )}
-          {canStartTakeover && (
-            <Button icon={<LoginOutlined />} onClick={handleStartTakeover}>
+          {showStartTakeover && (
+            <Button
+              icon={<LoginOutlined />}
+              onClick={handleStartTakeover}
+              disabled={operatorLoading || !startTakeoverPermission.allowed}
+              title={permissionReason(startTakeoverPermission, operatorLoading)}
+            >
               开始接管
             </Button>
           )}
-          {canFinishTakeover && (
-            <Button icon={<LogoutOutlined />} onClick={handleFinishTakeover}>
+          {showFinishTakeover && (
+            <Button
+              icon={<LogoutOutlined />}
+              onClick={handleFinishTakeover}
+              disabled={operatorLoading || !finishTakeoverPermission.allowed}
+              title={permissionReason(finishTakeoverPermission, operatorLoading)}
+            >
               结束接管
             </Button>
           )}
@@ -754,9 +867,9 @@ const TicketDetailPage: React.FC = () => {
                 rows={3}
                 maxLength={500}
                 showCount
-                disabled={!canSendTakeoverMessage}
+                disabled={!canSendHumanMessage}
                 placeholder={
-                  canSendTakeoverMessage
+                  canSendHumanMessage
                     ? "输入要发送给用户的人工客服消息"
                     : "开始人工接管后可发送消息"
                 }
@@ -767,7 +880,8 @@ const TicketDetailPage: React.FC = () => {
                 type="primary"
                 icon={<SendOutlined />}
                 loading={messageSending}
-                disabled={!canSendTakeoverMessage}
+                disabled={!canSendHumanMessage}
+                title={permissionReason(takeoverMessagePermission, operatorLoading)}
                 onClick={handleSendTakeoverMessage}
                 block
               >
@@ -786,6 +900,7 @@ const TicketDetailPage: React.FC = () => {
                 maxLength={500}
                 showCount
                 placeholder="记录仅坐席可见的处理备注、协作信息或后续跟进点"
+                disabled={!canAddNote}
                 value={internalNote}
                 onChange={(e) => setInternalNote(e.target.value)}
               />
@@ -793,6 +908,8 @@ const TicketDetailPage: React.FC = () => {
                 type="primary"
                 icon={<MessageOutlined />}
                 loading={noteLoading}
+                disabled={!canAddNote}
+                title={permissionReason(internalNotePermission, operatorLoading)}
                 onClick={handleAddInternalNote}
                 block
               >

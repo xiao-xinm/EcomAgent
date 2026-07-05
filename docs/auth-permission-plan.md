@@ -13,6 +13,7 @@
 - `frontend/client-h5` / `frontend/app-h5` 已通过运行时配置发送开发用户身份头，并预留可选 Bearer Token。
 - `frontend/workstation` 已通过运行时配置发送开发坐席身份头，操作前调用 `GET /api/workbench/me` 获取当前坐席，不再由页面硬编码操作人。
 - `frontend/client-h5` 和 `frontend/workstation` 已对 `401`、`403`、`1002`、`1003` 做统一错误文案归一化。
+- `frontend/workstation` 已基于当前坐席的 `principalType`、`roles` 和 `operatorId` 控制领取、审批、接管、人工消息、内部备注按钮。
 - 当前仍是兼容模式：不强制登录、不校验 JWT 签名、不新增 Redis Session。
 
 ## 1. 当前问题
@@ -175,7 +176,7 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 5. 按权限控制按钮显隐和禁用态。
 6. 对 `401`、`403` 和登录过期做统一提示。
 
-当前已完成开发身份头、可选 Bearer Token、`GET /api/workbench/me` 接入，以及鉴权失败 / 权限不足错误文案归一化；按钮权限控制和真实登录跳转留到后续收紧期。
+当前已完成开发身份头、可选 Bearer Token、`GET /api/workbench/me` 接入、鉴权失败 / 权限不足错误文案归一化，以及坐席端按钮级权限控制；真实登录跳转和后端强权限校验留到后续收紧期。
 
 ## 8. API 兼容策略
 

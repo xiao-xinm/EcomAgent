@@ -1,12 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Tag, Space, message, Row, Col, Card, Statistic } from "antd";
+import { Button, Tag, Space, message, Row, Col, Card, Statistic, Tooltip } from "antd";
 import { EyeOutlined } from "@ant-design/icons";
 import type { ActionType, ProColumns } from "@ant-design/pro-components";
 import { ProTable } from "@ant-design/pro-components";
 import dayjs from "dayjs";
-import { fetchTickets, fetchTicketStats, claimTicket } from "../../services/api";
+import {
+  fetchTickets,
+  fetchTicketStats,
+  claimTicket,
+  fetchCurrentOperator,
+} from "../../services/api";
 import type {
+  CurrentOperatorView,
   TicketSummary,
   TicketStatsView,
   WorkOrderStatus,
@@ -20,6 +26,7 @@ import {
   PRIORITY_MAP,
   ROUTE_DECISION_MAP,
 } from "../../constants/workbench";
+import { canClaimTicket } from "../../utils/permissions";
 
 const statusOptions: { label: string; value: WorkOrderStatus }[] = [
   { label: "待处理", value: "PENDING" },
@@ -71,6 +78,8 @@ const TicketList: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<TicketStatsView | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [currentOperator, setCurrentOperator] = useState<CurrentOperatorView | null>(null);
+  const [operatorLoading, setOperatorLoading] = useState(true);
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true);
@@ -87,7 +96,39 @@ const TicketList: React.FC = () => {
     loadStats();
   }, [loadStats]);
 
+  useEffect(() => {
+    let mounted = true;
+    setOperatorLoading(true);
+    fetchCurrentOperator()
+      .then((operator) => {
+        if (mounted) {
+          setCurrentOperator(operator);
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          setCurrentOperator(null);
+          message.error((err as Error).message || "当前坐席身份加载失败");
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setOperatorLoading(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleClaim = async (record: TicketSummary) => {
+    const permission = canClaimTicket(currentOperator, record);
+    if (operatorLoading || !permission.allowed) {
+      message.warning(
+        operatorLoading ? "正在加载坐席身份" : permission.reason || "当前账号没有操作权限",
+      );
+      return;
+    }
     try {
       await claimTicket(record.ticketId, {
         comment: "领取工单",
@@ -215,9 +256,24 @@ const TicketList: React.FC = () => {
             详情
           </Button>
           {record.status === "PENDING" && (
-            <Button type="link" size="small" onClick={() => handleClaim(record)}>
-              领取
-            </Button>
+            <Tooltip
+              title={
+                operatorLoading
+                  ? "正在加载坐席身份"
+                  : canClaimTicket(currentOperator, record).reason
+              }
+            >
+              <span>
+                <Button
+                  type="link"
+                  size="small"
+                  disabled={operatorLoading || !canClaimTicket(currentOperator, record).allowed}
+                  onClick={() => handleClaim(record)}
+                >
+                  领取
+                </Button>
+              </span>
+            </Tooltip>
           )}
         </Space>
       ),
