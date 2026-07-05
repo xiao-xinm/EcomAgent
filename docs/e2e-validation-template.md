@@ -211,6 +211,7 @@ cd D:\NewProject\EcomAgent
 - 坐席处理动作：审批通过 / 审批驳回 / 需要补充材料
 - 用户端是否看到 `SYSTEM` 回写消息：
 - Notification 是否可查到审批事件：
+- Notification 失败回写是否可记录 `retryCount / lastError`：
 - 用户端展示结果：
 
 结论：未验证
@@ -230,6 +231,7 @@ cd D:\NewProject\EcomAgent
 - 结束接管后 takeoverStatus：
 - 用户端是否看到 `HUMAN_AGENT` 结束消息：
 - Notification 是否可查到接管事件：
+- Notification 成功回写是否可记录 `deliveredAt`：
 
 结论：未验证
 

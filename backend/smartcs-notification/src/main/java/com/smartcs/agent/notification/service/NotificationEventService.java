@@ -4,6 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.common.dto.PageResult;
+import com.smartcs.agent.common.enums.ErrorCode;
+import com.smartcs.agent.common.exception.SmartCsException;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResult;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResultRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventResult;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventView;
@@ -18,6 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +38,9 @@ public class NotificationEventService {
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationEventService.class);
     private static final String DEFAULT_CHANNEL = "USER_SESSION";
     private static final String STATUS_ACCEPTED = "ACCEPTED";
+    private static final String STATUS_DELIVERED = "DELIVERED";
+    private static final String STATUS_FAILED = "FAILED";
+    private static final int MAX_ERROR_LENGTH = 1000;
     private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {
     };
 
@@ -55,8 +63,9 @@ public class NotificationEventService {
                 INSERT INTO notification_event (
                     event_id, trace_id, source_service, event_type, recipient_user_id,
                     session_id, ticket_id, operator_id, channel, title, content, payload,
-                    status, occurred_at, accepted_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+                    status, retry_count, last_error, next_retry_at, delivered_at,
+                    occurred_at, accepted_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?, ?, NOW(3), NOW(3))
                 ON DUPLICATE KEY UPDATE
                     trace_id = VALUES(trace_id),
                     source_service = VALUES(source_service),
@@ -70,6 +79,10 @@ public class NotificationEventService {
                     content = VALUES(content),
                     payload = VALUES(payload),
                     status = VALUES(status),
+                    retry_count = 0,
+                    last_error = NULL,
+                    next_retry_at = NULL,
+                    delivered_at = NULL,
                     occurred_at = VALUES(occurred_at),
                     accepted_at = VALUES(accepted_at),
                     updated_at = NOW(3)
@@ -104,6 +117,62 @@ public class NotificationEventService {
         return new NotificationEventResult(eventId, STATUS_ACCEPTED, channel, acceptedAt);
     }
 
+    public NotificationDeliveryResult recordDeliveryResult(
+            String eventId,
+            NotificationDeliveryResultRequest request) {
+        String normalizedEventId = requireText(eventId, "通知事件ID不能为空");
+        if (request == null) {
+            throw new SmartCsException(ErrorCode.BAD_REQUEST, "通知投递结果不能为空");
+        }
+        String normalizedStatus = requireText(request.status(), "通知投递状态不能为空").toUpperCase(Locale.ROOT);
+        if (STATUS_DELIVERED.equals(normalizedStatus)) {
+            Instant deliveredAt = Instant.now();
+            int updated = jdbcTemplate.update(
+                    """
+                    UPDATE notification_event
+                    SET status = ?,
+                        last_error = NULL,
+                        next_retry_at = NULL,
+                        delivered_at = ?,
+                        updated_at = NOW(3)
+                    WHERE event_id = ?
+                    """,
+                    STATUS_DELIVERED,
+                    timestamp(deliveredAt),
+                    normalizedEventId);
+            ensureUpdated(updated, normalizedEventId);
+        } else if (STATUS_FAILED.equals(normalizedStatus)) {
+            String lastError = normalizeError(request.errorMessage());
+            int updated = jdbcTemplate.update(
+                    """
+                    UPDATE notification_event
+                    SET status = ?,
+                        retry_count = retry_count + 1,
+                        last_error = ?,
+                        next_retry_at = ?,
+                        delivered_at = NULL,
+                        updated_at = NOW(3)
+                    WHERE event_id = ?
+                    """,
+                    STATUS_FAILED,
+                    lastError,
+                    nullableTimestamp(request.nextRetryAt()),
+                    normalizedEventId);
+            ensureUpdated(updated, normalizedEventId);
+        } else {
+            throw new SmartCsException(ErrorCode.BAD_REQUEST, "不支持的通知投递状态：" + normalizedStatus);
+        }
+        NotificationDeliveryResult result = findDeliveryResult(normalizedEventId);
+        LOGGER.info(
+                "Notification delivery status changed eventId={} status={} retryCount={} nextRetryAt={} deliveredAt={}",
+                result.eventId(),
+                result.status(),
+                result.retryCount(),
+                result.nextRetryAt(),
+                result.deliveredAt());
+        return result;
+    }
+
     public PageResult<NotificationEventView> list(
             String eventType,
             String ticketId,
@@ -127,7 +196,8 @@ public class NotificationEventService {
                 """
                 SELECT event_id, trace_id, source_service, event_type, recipient_user_id,
                        session_id, ticket_id, operator_id, channel, title, content, payload,
-                       status, occurred_at, accepted_at, created_at, updated_at
+                       status, retry_count, last_error, next_retry_at, delivered_at,
+                       occurred_at, accepted_at, created_at, updated_at
                 FROM notification_event
                 """
                         + whereClause
@@ -182,14 +252,61 @@ public class NotificationEventService {
                 rs.getString("content"),
                 readPayload(rs.getString("payload")),
                 rs.getString("status"),
+                rs.getInt("retry_count"),
+                rs.getString("last_error"),
+                toInstant(rs.getTimestamp("next_retry_at")),
+                toInstant(rs.getTimestamp("delivered_at")),
                 toInstant(rs.getTimestamp("occurred_at")),
                 toInstant(rs.getTimestamp("accepted_at")),
                 toInstant(rs.getTimestamp("created_at")),
                 toInstant(rs.getTimestamp("updated_at")));
     }
 
+    private NotificationDeliveryResult findDeliveryResult(String eventId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    """
+                    SELECT event_id, status, retry_count, last_error, next_retry_at, delivered_at, updated_at
+                    FROM notification_event
+                    WHERE event_id = ?
+                    """,
+                    (rs, rowNum) -> new NotificationDeliveryResult(
+                            rs.getString("event_id"),
+                            rs.getString("status"),
+                            rs.getInt("retry_count"),
+                            rs.getString("last_error"),
+                            toInstant(rs.getTimestamp("next_retry_at")),
+                            toInstant(rs.getTimestamp("delivered_at")),
+                            toInstant(rs.getTimestamp("updated_at"))),
+                    eventId);
+        } catch (EmptyResultDataAccessException exception) {
+            throw new SmartCsException(ErrorCode.NOT_FOUND, "通知事件不存在：" + eventId);
+        }
+    }
+
+    private void ensureUpdated(int updated, String eventId) {
+        if (updated <= 0) {
+            throw new SmartCsException(ErrorCode.NOT_FOUND, "通知事件不存在：" + eventId);
+        }
+    }
+
+    private String requireText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new SmartCsException(ErrorCode.BAD_REQUEST, message);
+        }
+        return value.trim();
+    }
+
     private String textOr(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private String normalizeError(String errorMessage) {
+        String normalized = textOr(errorMessage, "UNKNOWN_ERROR").trim();
+        if (normalized.length() > MAX_ERROR_LENGTH) {
+            return normalized.substring(0, MAX_ERROR_LENGTH);
+        }
+        return normalized;
     }
 
     private String toJson(Map<String, Object> payload) {
@@ -214,6 +331,10 @@ public class NotificationEventService {
 
     private Timestamp timestamp(Instant instant) {
         return Timestamp.from(instant);
+    }
+
+    private Timestamp nullableTimestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
     }
 
     private Instant toInstant(Timestamp timestamp) {

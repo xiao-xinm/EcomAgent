@@ -11,6 +11,8 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.common.dto.PageResult;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResult;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResultRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventResult;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventView;
@@ -83,6 +85,10 @@ class NotificationEventServiceTest {
                     when(rs.getString("content")).thenReturn("审批已通过");
                     when(rs.getString("payload")).thenReturn("{\"ticketId\":\"wo_test\"}");
                     when(rs.getString("status")).thenReturn("ACCEPTED");
+                    when(rs.getInt("retry_count")).thenReturn(0);
+                    when(rs.getString("last_error")).thenReturn(null);
+                    when(rs.getTimestamp("next_retry_at")).thenReturn(null);
+                    when(rs.getTimestamp("delivered_at")).thenReturn(null);
                     when(rs.getTimestamp("occurred_at")).thenReturn(Timestamp.from(now));
                     when(rs.getTimestamp("accepted_at")).thenReturn(Timestamp.from(now));
                     when(rs.getTimestamp("created_at")).thenReturn(Timestamp.from(now));
@@ -102,5 +108,73 @@ class NotificationEventServiceTest {
         assertThat(page.total()).isEqualTo(1);
         assertThat(page.records()).hasSize(1);
         assertThat(page.records().get(0).payload()).containsEntry("ticketId", "wo_test");
+        assertThat(page.records().get(0).retryCount()).isZero();
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void recordFailedDeliveryIncrementsRetryAndStoresError() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.update(contains("retry_count = retry_count + 1"), any(Object[].class))).thenReturn(1);
+        Instant nextRetryAt = Instant.parse("2026-07-05T01:10:00Z");
+        mockDeliveryResultQuery(jdbcTemplate, "FAILED", 2, "站内信通道暂不可用", nextRetryAt, null);
+        NotificationEventService service = new NotificationEventService(jdbcTemplate, new ObjectMapper());
+
+        NotificationDeliveryResult result = service.recordDeliveryResult(
+                "evt_test",
+                new NotificationDeliveryResultRequest("FAILED", "站内信通道暂不可用", nextRetryAt));
+
+        assertThat(result.status()).isEqualTo("FAILED");
+        assertThat(result.retryCount()).isEqualTo(2);
+        assertThat(result.lastError()).isEqualTo("站内信通道暂不可用");
+        assertThat(result.nextRetryAt()).isEqualTo(nextRetryAt);
+        verify(jdbcTemplate).update(contains("retry_count = retry_count + 1"), any(Object[].class));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void recordDeliveredResultClearsErrorAndKeepsRetryCount() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.update(contains("delivered_at = ?"), any(Object[].class))).thenReturn(1);
+        Instant deliveredAt = Instant.parse("2026-07-05T01:10:00Z");
+        mockDeliveryResultQuery(jdbcTemplate, "DELIVERED", 1, null, null, deliveredAt);
+        NotificationEventService service = new NotificationEventService(jdbcTemplate, new ObjectMapper());
+
+        NotificationDeliveryResult result = service.recordDeliveryResult(
+                "evt_test",
+                new NotificationDeliveryResultRequest("DELIVERED", null, null));
+
+        assertThat(result.status()).isEqualTo("DELIVERED");
+        assertThat(result.retryCount()).isEqualTo(1);
+        assertThat(result.lastError()).isNull();
+        assertThat(result.deliveredAt()).isEqualTo(deliveredAt);
+        verify(jdbcTemplate).update(contains("delivered_at = ?"), any(Object[].class));
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void mockDeliveryResultQuery(
+            JdbcTemplate jdbcTemplate,
+            String status,
+            int retryCount,
+            String lastError,
+            Instant nextRetryAt,
+            Instant deliveredAt) {
+        when(jdbcTemplate.queryForObject(
+                contains("SELECT event_id, status, retry_count"),
+                any(RowMapper.class),
+                eq("evt_test")))
+                .thenAnswer(invocation -> {
+                    RowMapper mapper = invocation.getArgument(1);
+                    ResultSet rs = mock(ResultSet.class);
+                    Instant now = Instant.parse("2026-07-05T01:00:00Z");
+                    when(rs.getString("event_id")).thenReturn("evt_test");
+                    when(rs.getString("status")).thenReturn(status);
+                    when(rs.getInt("retry_count")).thenReturn(retryCount);
+                    when(rs.getString("last_error")).thenReturn(lastError);
+                    when(rs.getTimestamp("next_retry_at")).thenReturn(nextRetryAt == null ? null : Timestamp.from(nextRetryAt));
+                    when(rs.getTimestamp("delivered_at")).thenReturn(deliveredAt == null ? null : Timestamp.from(deliveredAt));
+                    when(rs.getTimestamp("updated_at")).thenReturn(Timestamp.from(now));
+                    return mapper.mapRow(rs, 0);
+                });
     }
 }

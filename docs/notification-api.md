@@ -10,7 +10,9 @@
 - 默认端口：`8085`
 - 健康检查：`GET http://localhost:8085/api/health`
 - 本地依赖：MySQL
-- 初始化脚本：`infra/sql/10-notification-event-store.sql`
+- 初始化脚本：
+  - `infra/sql/10-notification-event-store.sql`
+  - `infra/sql/11-notification-delivery-status.sql`
 
 ## 接收通知事件
 
@@ -105,6 +107,10 @@ GET /api/notifications/events?pageNo=1&pageSize=20&eventType=APPROVAL_APPROVED&t
           "workOrderStatus": "APPROVED"
         },
         "status": "ACCEPTED",
+        "retryCount": 0,
+        "lastError": null,
+        "nextRetryAt": null,
+        "deliveredAt": null,
         "occurredAt": "2026-07-05T01:00:00Z",
         "acceptedAt": "2026-07-05T01:00:01Z",
         "createdAt": "2026-07-05T01:00:01Z",
@@ -118,6 +124,59 @@ GET /api/notifications/events?pageNo=1&pageSize=20&eventType=APPROVAL_APPROVED&t
   "traceId": "..."
 }
 ```
+
+## 回写投递结果
+
+当前阶段还没有真实短信、站内信或 MQ 消费器。该接口先作为投递状态骨架，用于后续投递 worker 或消息消费者回写结果。
+
+```http
+POST /api/notifications/events/{eventId}/delivery-result
+Content-Type: application/json; charset=utf-8
+```
+
+失败回写示例：
+
+```json
+{
+  "status": "FAILED",
+  "errorMessage": "站内信通道暂不可用",
+  "nextRetryAt": "2026-07-05T01:10:00Z"
+}
+```
+
+成功回写示例：
+
+```json
+{
+  "status": "DELIVERED"
+}
+```
+
+响应体：
+
+```json
+{
+  "code": "0000",
+  "message": "success",
+  "data": {
+    "eventId": "ntf_xxx",
+    "status": "FAILED",
+    "retryCount": 1,
+    "lastError": "站内信通道暂不可用",
+    "nextRetryAt": "2026-07-05T01:10:00Z",
+    "deliveredAt": null,
+    "updatedAt": "2026-07-05T01:00:01Z"
+  },
+  "traceId": "..."
+}
+```
+
+说明：
+
+- `status` 只支持 `DELIVERED` 和 `FAILED`。
+- `FAILED` 会让 `retryCount + 1`，记录 `lastError` 和 `nextRetryAt`。
+- `DELIVERED` 会清空 `lastError` 和 `nextRetryAt`，并记录 `deliveredAt`。
+- 这只是状态记录，不会自动执行真实重试；真实重试调度后续再评估是否接入 RocketMQ 或定时任务。
 
 ## Workbench 投递点
 

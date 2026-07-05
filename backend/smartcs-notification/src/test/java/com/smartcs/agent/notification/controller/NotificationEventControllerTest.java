@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResult;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResultRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventResult;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventView;
@@ -72,6 +74,10 @@ class NotificationEventControllerTest {
                         "审批已通过",
                         Map.of("ticketId", "wo_test"),
                         "ACCEPTED",
+                        0,
+                        null,
+                        null,
+                        null,
                         now,
                         now,
                         now,
@@ -94,5 +100,32 @@ class NotificationEventControllerTest {
         assertThat(response.data()).isSameAs(page);
         assertThat(response.data().records()).hasSize(1);
         verify(notificationEventService).list("APPROVAL_APPROVED", "wo_test", "u1001", "ACCEPTED", 1, 20);
+    }
+
+    @Test
+    void recordDeliveryResultReturnsUpdatedStatus() {
+        NotificationEventService notificationEventService = mock(NotificationEventService.class);
+        NotificationEventController controller = new NotificationEventController(notificationEventService);
+        Instant nextRetryAt = Instant.now().plusSeconds(60);
+        NotificationDeliveryResultRequest request = new NotificationDeliveryResultRequest(
+                "FAILED",
+                "站内信通道暂不可用",
+                nextRetryAt);
+        NotificationDeliveryResult result = new NotificationDeliveryResult(
+                "evt_test",
+                "FAILED",
+                1,
+                "站内信通道暂不可用",
+                nextRetryAt,
+                null,
+                Instant.now());
+        when(notificationEventService.recordDeliveryResult("evt_test", request)).thenReturn(result);
+
+        ApiResponse<NotificationDeliveryResult> response = controller.recordDeliveryResult("evt_test", request);
+
+        assertThat(response.code()).isEqualTo("0000");
+        assertThat(response.data()).isSameAs(result);
+        assertThat(response.data().retryCount()).isEqualTo(1);
+        verify(notificationEventService).recordDeliveryResult("evt_test", request);
     }
 }

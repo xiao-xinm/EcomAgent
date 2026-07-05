@@ -13,6 +13,7 @@
 - `08-work-order-internal-note-action.sql`：工单内部备注动作类型增量脚本。
 - `09-knowledge-faq-management.sql`：FAQ 知识库管理表结构和初始数据。
 - `10-notification-event-store.sql`：通知事件落库表结构。
+- `11-notification-delivery-status.sql`：通知投递状态、失败原因和重试时间字段。
 
 第一阶段已覆盖：
 
@@ -60,3 +61,4 @@
 - 通知事件：`notification_event`
 
 `smartcs-notification` 接收 Workbench 投递的审批、人工接管、人工消息等通知事件，并写入 `notification_event` 供后续查询、重试和事件解耦使用。
+当前已扩展投递状态字段，用于记录失败原因、重试次数、下次重试时间和成功投递时间。

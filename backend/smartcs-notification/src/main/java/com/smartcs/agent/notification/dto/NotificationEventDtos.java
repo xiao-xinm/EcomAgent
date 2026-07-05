@@ -50,9 +50,31 @@ public final class NotificationEventDtos {
             String content,
             Map<String, Object> payload,
             String status,
+            int retryCount,
+            String lastError,
+            Instant nextRetryAt,
+            Instant deliveredAt,
             Instant occurredAt,
             Instant acceptedAt,
             Instant createdAt,
+            Instant updatedAt
+    ) {
+    }
+
+    public record NotificationDeliveryResultRequest(
+            String status,
+            String errorMessage,
+            Instant nextRetryAt
+    ) {
+    }
+
+    public record NotificationDeliveryResult(
+            String eventId,
+            String status,
+            int retryCount,
+            String lastError,
+            Instant nextRetryAt,
+            Instant deliveredAt,
             Instant updatedAt
     ) {
     }
