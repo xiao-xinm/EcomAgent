@@ -22,6 +22,7 @@
 - `smartcs-notification`：`8085`
 
 MySQL 使用当前开发库，账号密码按本地配置。
+通知服务当前不要求启动 RocketMQ；MQ 引入条件和候选方案见 [notification-mq-evaluation.md](./notification-mq-evaluation.md)。
 
 ### 前端
 

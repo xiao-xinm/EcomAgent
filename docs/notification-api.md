@@ -4,6 +4,8 @@
 
 当前目标是让 Workbench 在审批、人工接管、人工消息等动作完成后投递通知事件，并由 Notification 服务落库，便于后续接入站内信、短信、坐席提醒、失败重试或消息队列。当前阶段不引入 RocketMQ、Redis 或 WebSocket。
 
+MQ 是否引入、何时引入以及 RocketMQ 候选设计见 [notification-mq-evaluation.md](./notification-mq-evaluation.md)。
+
 ## 服务信息
 
 - 服务名：`smartcs-notification`

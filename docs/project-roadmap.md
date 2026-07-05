@@ -222,6 +222,7 @@
 - 已新增 `infra/sql/11-notification-delivery-status.sql`，记录投递状态、失败原因、重试次数、下次重试时间和成功投递时间。
 - 已新增 `POST /api/notifications/events/{eventId}/delivery-result`，用于后续投递 worker 或 MQ 消费器回写 `DELIVERED` / `FAILED`。
 - Workbench 已将审批结论和接管状态类用户侧事件收口到统一私有边界，业务动作不再重复散落“写用户消息 + 投递通知”的相邻组合。
+- 已完成 MQ 异步化评估文档：`docs/notification-mq-evaluation.md`。当前结论是暂不引入 RocketMQ，继续使用 MySQL 可追踪事件，后续自动重试优先评估 Notification 内部定时 worker。
 
 中间件要求：
 
