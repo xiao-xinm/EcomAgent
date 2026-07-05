@@ -248,6 +248,8 @@ GET /api/chat/sessions/{sessionId}/messages?limit=100
 
 消息列表会包含同一会话下的所有用户可见消息，包括 `USER`、`AGENT`、`SYSTEM` 和 `HUMAN_AGENT`。当坐席在 Workbench 完成审批通过、审批驳回、人工接入、发送人工消息或人工处理结束时，后端会追加一条 `SYSTEM` 或 `HUMAN_AGENT` 消息，H5 通过本接口刷新即可看到人工处理进度和结果。
 
+当前阶段仍以本接口短轮询作为稳定基线。实时消息升级方案见 [realtime-messaging-evaluation.md](./realtime-messaging-evaluation.md)。
+
 响应：
 
 ```ts

@@ -8,6 +8,8 @@
 - 坐席工作台：操作成功后重新拉取工单详情、会话消息和操作日志
 - APP H5：复用用户端 H5 的聊天能力和短轮询策略，默认渠道为 `app-h5`
 
+实时消息升级方案见 [realtime-messaging-evaluation.md](./realtime-messaging-evaluation.md)。当前不要求启动 WebSocket、SSE、Redis 或 MQ。
+
 ## 1. 启动服务
 
 ### 后端
