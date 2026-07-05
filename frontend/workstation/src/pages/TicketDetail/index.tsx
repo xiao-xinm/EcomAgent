@@ -52,7 +52,6 @@ import {
   RISK_LEVEL_MAP,
   PRIORITY_MAP,
   ROUTE_DECISION_MAP,
-  DEFAULT_OPERATOR_ID,
 } from "../../constants/workbench";
 
 const { Title, Text } = Typography;
@@ -253,7 +252,6 @@ const TicketDetailPage: React.FC = () => {
   const handleClaim = () =>
     withComment("领取工单", async (comment) => {
       await claimTicket(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "领取工单",
       });
       message.success("领取成功");
@@ -263,7 +261,6 @@ const TicketDetailPage: React.FC = () => {
   const handleApprove = () =>
     withComment("审批通过", async (comment) => {
       await approveTicket(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "审批通过",
         decisionType: "APPROVED",
         result: { conclusion: "APPROVED" },
@@ -275,7 +272,6 @@ const TicketDetailPage: React.FC = () => {
   const handleReject = () =>
     withComment("审批驳回", async (comment) => {
       await rejectTicket(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "审批驳回",
         decisionType: "REJECTED",
         result: { conclusion: "REJECTED" },
@@ -288,7 +284,6 @@ const TicketDetailPage: React.FC = () => {
     withComment("要求补充材料", async (comment) => {
       const materialComment = comment || "请补充相关凭证或说明";
       await requestApprovalMaterials(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: materialComment,
         decisionType: "REQUEST_MATERIALS",
         result: { requiredMaterials: materialComment },
@@ -301,7 +296,6 @@ const TicketDetailPage: React.FC = () => {
     withComment("转人工接管", async (comment) => {
       const transferReason = comment || "审批需要人工接管继续处理";
       await transferApprovalToTakeover(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: transferReason,
         decisionType: "TRANSFER_TAKEOVER",
         result: { transferReason },
@@ -313,7 +307,6 @@ const TicketDetailPage: React.FC = () => {
   const handleStartTakeover = () =>
     withComment("开始接管", async (comment) => {
       await startTakeover(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "开始人工接管",
       });
       message.success("已开始接管");
@@ -323,7 +316,6 @@ const TicketDetailPage: React.FC = () => {
   const handleFinishTakeover = () =>
     withComment("结束接管", async (comment) => {
       await finishTakeover(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: comment || "结束人工接管",
         resolutionStatus: "RESOLVED",
       });
@@ -340,7 +332,6 @@ const TicketDetailPage: React.FC = () => {
     setNoteLoading(true);
     try {
       await addInternalNote(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment,
         payload: { source: "ticket-detail" },
       });
@@ -363,7 +354,6 @@ const TicketDetailPage: React.FC = () => {
     setMessageSending(true);
     try {
       await sendTakeoverMessage(ticketId!, {
-        operatorId: DEFAULT_OPERATOR_ID,
         content,
         payload: { source: "ticket-detail" },
       });

@@ -97,6 +97,13 @@ export interface TicketStatsView {
   overdueRisk: number;
 }
 
+export interface CurrentOperatorView {
+  operatorId: string;
+  principalType: "AGENT" | "SUPERVISOR" | "ADMIN" | string;
+  roles: string[];
+  authSource: "STANDARD_HEADER" | "DEV_HEADER" | "LEGACY_BODY" | "DEV_FALLBACK" | string;
+}
+
 export interface WorkOrderView extends TicketSummary {
   contextSnapshot: Record<string, unknown>;
   resolution: Record<string, unknown>;
@@ -191,33 +198,33 @@ export interface ActionResult {
 }
 
 export interface OperatorActionRequest {
-  operatorId: string;
+  operatorId?: string;
   comment?: string;
   payload?: Record<string, unknown>;
 }
 
 export interface ApprovalDecisionRequest {
-  operatorId: string;
+  operatorId?: string;
   comment?: string;
   decisionType?: ApprovalDecisionType;
   result?: Record<string, unknown>;
 }
 
 export interface TakeoverFinishRequest {
-  operatorId: string;
+  operatorId?: string;
   comment?: string;
   resolutionStatus?: "RESOLVED" | "CANCELLED";
   result?: Record<string, unknown>;
 }
 
 export interface TakeoverMessageRequest {
-  operatorId: string;
+  operatorId?: string;
   content: string;
   payload?: Record<string, unknown>;
 }
 
 export interface InternalNoteRequest {
-  operatorId: string;
+  operatorId?: string;
   comment: string;
   payload?: Record<string, unknown>;
 }

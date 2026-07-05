@@ -1,6 +1,8 @@
 export interface RuntimeChatConfig {
   apiBaseUrl: string
   userId: string
+  authToken?: string
+  userRoles: string
   channel: string
   pollingIntervalMs: number
   sseEnabled: boolean
@@ -48,6 +50,14 @@ const userId = queryText('userId', 'uid')
   || windowConfig.userId
   || envText(import.meta.env.VITE_USER_ID)
   || 'u1001'
+const authToken = queryText('authToken', 'token')
+  || windowConfig.authToken
+  || envText(import.meta.env.VITE_AUTH_TOKEN)
+  || undefined
+const userRoles = queryText('roles', 'userRoles')
+  || windowConfig.userRoles
+  || envText(import.meta.env.VITE_USER_ROLES)
+  || 'CUSTOMER'
 const channel = queryText('channel')
   || windowConfig.channel
   || envText(import.meta.env.VITE_CHANNEL)
@@ -62,6 +72,8 @@ export const runtimeChatConfig: RuntimeChatConfig = {
     || envText(import.meta.env.VITE_API_BASE_URL)
     || 'http://localhost:8080',
   userId,
+  authToken,
+  userRoles,
   channel,
   pollingIntervalMs: numberOr(
     queryText('pollingIntervalMs')

@@ -52,5 +52,3 @@ export const ROUTE_DECISION_MAP: Record<RouteDecision, string> = {
   HUMAN_TAKEOVER: "人工接管",
   REJECT: "拒绝",
 };
-
-export const DEFAULT_OPERATOR_ID = "agent_001";

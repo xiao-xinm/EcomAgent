@@ -10,6 +10,8 @@
 - `smartcs-gateway` 已支持从标准身份头、开发用户头或旧请求体 `userId` 解析用户身份，并向 Agent Core 透传标准身份头。
 - `smartcs-workbench` 已支持从标准身份头、开发坐席头或旧请求体 `operatorId` 解析坐席身份，并用解析后的坐席 ID 写入现有操作请求。
 - `smartcs-workbench` 已新增 `GET /api/workbench/me`，供坐席前端后续移除固定 `DEFAULT_OPERATOR_ID`。
+- `frontend/client-h5` / `frontend/app-h5` 已通过运行时配置发送开发用户身份头，并预留可选 Bearer Token。
+- `frontend/workstation` 已通过运行时配置发送开发坐席身份头，操作前调用 `GET /api/workbench/me` 获取当前坐席，不再由页面硬编码操作人。
 - 当前仍是兼容模式：不强制登录、不校验 JWT 签名、不新增 Redis Session。
 
 ## 1. 当前问题
@@ -161,6 +163,8 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 
 开发期可以保留 `VITE_USER_ID`，但只能作为本地兼容头或 mock token 的输入。
 
+注意：浏览器 `EventSource` 不能附加自定义 Header。当前 SSE 仍作为兼容期可选增量唤醒能力，强制鉴权前需要单独确认 Cookie 或 query token 策略。
+
 ### 7.2 坐席工作台
 
 1. 增加当前坐席信息接口，例如 `GET /api/workbench/me`。
@@ -169,6 +173,8 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 4. 移除 `DEFAULT_OPERATOR_ID` 对真实操作的依赖。
 5. 按权限控制按钮显隐和禁用态。
 6. 对 `401`、`403` 和登录过期做统一提示。
+
+当前已完成开发身份头、可选 Bearer Token 和 `GET /api/workbench/me` 接入；按钮权限控制与登录过期交互留到后续收紧期。
 
 ## 8. API 兼容策略
 

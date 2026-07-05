@@ -53,6 +53,7 @@ X-SmartCS-Auth-Source: DEV_HEADER | LEGACY_BODY | STANDARD_HEADER
 - 其次使用开发头 `X-SmartCS-User-Id`。
 - 如果没有身份头，继续使用请求体 `userId`，并标记为 `LEGACY_BODY`。
 - 本阶段不强制鉴权，不校验 JWT 签名，不引入 Redis Session。
+- 浏览器 `EventSource` 不能附加自定义 Header，SSE 当前仍用于兼容期增量唤醒；强制鉴权前需单独确认 Cookie 或 query token 策略。
 
 ## 1. 发送自然语言消息
 

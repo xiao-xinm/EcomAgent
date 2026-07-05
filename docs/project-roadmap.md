@@ -284,7 +284,9 @@
 - 已新增 `smartcs-common` 身份上下文模型和标准身份头常量。
 - Gateway 已支持标准身份头、开发用户头和旧请求体 `userId` 的兼容解析，并向 Agent Core 透传标准身份头。
 - Workbench 已支持标准身份头、开发坐席头和旧请求体 `operatorId` 的兼容解析，并新增 `GET /api/workbench/me`。
-- 下一轮应推进前端使用当前身份接口 / 开发头，逐步减少固定 `userId` / `operatorId`。
+- 用户端 H5 / APP H5 已发送开发用户身份头和可选 Bearer Token。
+- 坐席工作台已发送开发坐席身份头，操作前通过 `GET /api/workbench/me` 获取当前坐席，页面不再硬编码 `operatorId`。
+- 下一轮应补 401 / 403 / 登录过期前端交互，并评估生产 Token 校验接入点。
 
 中间件要求：
 

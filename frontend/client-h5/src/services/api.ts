@@ -11,7 +11,14 @@ import { runtimeChatConfig } from '@/config/runtime'
 
 const client = axios.create({
   baseURL: runtimeChatConfig.apiBaseUrl,
-  headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+  headers: {
+    'Content-Type': 'application/json;charset=UTF-8',
+    'X-SmartCS-User-Id': runtimeChatConfig.userId,
+    'X-SmartCS-Roles': runtimeChatConfig.userRoles,
+    ...(runtimeChatConfig.authToken
+      ? { Authorization: `Bearer ${runtimeChatConfig.authToken}` }
+      : {}),
+  },
   timeout: 15_000,
 })
 

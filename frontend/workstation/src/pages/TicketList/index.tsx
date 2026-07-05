@@ -19,7 +19,6 @@ import {
   RISK_LEVEL_MAP,
   PRIORITY_MAP,
   ROUTE_DECISION_MAP,
-  DEFAULT_OPERATOR_ID,
 } from "../../constants/workbench";
 
 const statusOptions: { label: string; value: WorkOrderStatus }[] = [
@@ -91,7 +90,6 @@ const TicketList: React.FC = () => {
   const handleClaim = async (record: TicketSummary) => {
     try {
       await claimTicket(record.ticketId, {
-        operatorId: DEFAULT_OPERATOR_ID,
         comment: "领取工单",
       });
       message.success("领取成功");
