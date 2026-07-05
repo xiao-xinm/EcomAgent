@@ -206,7 +206,7 @@ FAQ 未命中兜底可选验收：
 - 坐席工作台工单列表出现 `HUMAN_REVIEW` 工单
 - 坐席进入详情页后可以领取、审批通过或审批驳回
 - 审批完成后，用户端 H5 通过轮询看到 `SYSTEM` 角色消息
-- 审批完成后，Workbench 日志显示通知事件投递结果；Notification 日志出现 `APPROVAL_APPROVED` 或 `APPROVAL_REJECTED`
+- 审批完成后，Workbench 日志显示通知事件投递结果；调用 `GET /api/notifications/events?ticketId={ticketId}` 可查到 `APPROVAL_APPROVED` 或 `APPROVAL_REJECTED`
 - 工单详情页操作日志出现对应审批动作
 
 ## 5. 人工接管
@@ -226,7 +226,7 @@ FAQ 未命中兜底可选验收：
 - 用户端 H5 通过轮询看到 `HUMAN_AGENT` 角色消息：人工客服已接入
 - 点击“结束接管”后，接管状态变为 `RESOLVED`
 - 用户端 H5 通过轮询看到人工处理结束消息
-- 开始/结束接管后，Workbench 日志显示通知事件投递结果；Notification 日志出现 `TAKEOVER_STARTED` 或 `TAKEOVER_FINISHED`
+- 开始/结束接管后，Workbench 日志显示通知事件投递结果；调用 `GET /api/notifications/events?ticketId={ticketId}` 可查到 `TAKEOVER_STARTED` 或 `TAKEOVER_FINISHED`
 - 工单详情页操作日志出现领取、开始接管、结束接管动作
 
 ## 6. 常见排查

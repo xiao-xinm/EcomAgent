@@ -199,7 +199,7 @@
 
 ### Phase 6. 通知服务增强
 
-状态：待开始。
+状态：进行中。
 
 目标：
 
@@ -213,6 +213,12 @@
 3. 增加失败重试或错误记录。
 4. Workbench 操作结果和用户消息回写解耦。
 5. 再评估 MQ 异步化。
+
+当前进展：
+
+- 已新增 `notification_event` 表脚本：`infra/sql/10-notification-event-store.sql`。
+- `smartcs-notification` 已将 `POST /api/notifications/events` 接收的事件写入 MySQL。
+- 已新增 `GET /api/notifications/events` 分页查询接口，支持按事件类型、工单、用户和状态筛选。
 
 中间件要求：
 

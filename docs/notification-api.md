@@ -1,17 +1,18 @@
 # Notification Event API
 
-本文档记录 `smartcs-notification` 当前阶段的最小通知事件能力。
+本文档记录 `smartcs-notification` 当前阶段的通知事件能力。
 
-当前实现目标是让 Workbench 在审批、人工接管动作完成后，额外投递一条通知事件，便于后续接入站内信、短信、坐席提醒或消息队列。当前阶段不引入 RocketMQ、Redis 或数据库表。
+当前目标是让 Workbench 在审批、人工接管、人工消息等动作完成后投递通知事件，并由 Notification 服务落库，便于后续接入站内信、短信、坐席提醒、失败重试或消息队列。当前阶段不引入 RocketMQ、Redis 或 WebSocket。
 
-## 服务
+## 服务信息
 
 - 服务名：`smartcs-notification`
 - 默认端口：`8085`
-- 本地健康检查：`GET http://localhost:8085/api/health`
-- 本地依赖：无新增中间件
+- 健康检查：`GET http://localhost:8085/api/health`
+- 本地依赖：MySQL
+- 初始化脚本：`infra/sql/10-notification-event-store.sql`
 
-## 事件接收
+## 接收通知事件
 
 ```http
 POST /api/notifications/events
@@ -32,12 +33,12 @@ Content-Type: application/json; charset=utf-8
   "operatorId": "agent001",
   "channel": "USER_SESSION",
   "title": "审批通过通知",
-  "content": "你的退款申请已通过人工审核...",
+  "content": "你的售后申请已通过人工审核。",
   "payload": {
     "approvalStatus": "APPROVED",
     "workOrderStatus": "APPROVED"
   },
-  "occurredAt": "2026-06-25T03:00:00Z"
+  "occurredAt": "2026-07-05T01:00:00Z"
 }
 ```
 
@@ -51,9 +52,70 @@ Content-Type: application/json; charset=utf-8
     "eventId": "ntf_xxx",
     "status": "ACCEPTED",
     "channel": "USER_SESSION",
-    "acceptedAt": "2026-06-25T03:00:00Z"
+    "acceptedAt": "2026-07-05T01:00:01Z"
   },
   "traceId": "trace_xxx"
+}
+```
+
+说明：
+
+- `eventId` 不传时由 Notification 服务生成。
+- `channel` 不传时默认为 `USER_SESSION`。
+- `occurredAt` 不传时使用服务接收时间。
+- 当前仅代表事件已被 Notification 接收并落库，真实站内信、短信或推送还未接入。
+
+## 查询通知事件
+
+```http
+GET /api/notifications/events?pageNo=1&pageSize=20&eventType=APPROVAL_APPROVED&ticketId=wo_xxx&recipientUserId=u1001&status=ACCEPTED
+```
+
+查询参数：
+
+- `eventType`：可选，事件类型。
+- `ticketId`：可选，工单 ID。
+- `recipientUserId`：可选，用户 ID。
+- `status`：可选，事件状态。
+- `pageNo`：可选，默认 `1`。
+- `pageSize`：可选，默认 `20`，最大 `100`。
+
+响应体：
+
+```json
+{
+  "code": "0000",
+  "message": "success",
+  "data": {
+    "records": [
+      {
+        "eventId": "ntf_xxx",
+        "traceId": "trace_xxx",
+        "sourceService": "smartcs-workbench",
+        "eventType": "APPROVAL_APPROVED",
+        "recipientUserId": "u1001",
+        "sessionId": "s_xxx",
+        "ticketId": "wo_xxx",
+        "operatorId": "agent001",
+        "channel": "USER_SESSION",
+        "title": "审批通过通知",
+        "content": "你的售后申请已通过人工审核。",
+        "payload": {
+          "approvalStatus": "APPROVED",
+          "workOrderStatus": "APPROVED"
+        },
+        "status": "ACCEPTED",
+        "occurredAt": "2026-07-05T01:00:00Z",
+        "acceptedAt": "2026-07-05T01:00:01Z",
+        "createdAt": "2026-07-05T01:00:01Z",
+        "updatedAt": "2026-07-05T01:00:01Z"
+      }
+    ],
+    "total": 1,
+    "pageNo": 1,
+    "pageSize": 20
+  },
+  "traceId": "..."
 }
 ```
 
@@ -63,7 +125,10 @@ Workbench 当前会在以下动作成功后投递通知事件：
 
 - `APPROVAL_APPROVED`
 - `APPROVAL_REJECTED`
+- `APPROVAL_MATERIALS_REQUESTED`
+- `APPROVAL_TRANSFERRED_TO_TAKEOVER`
 - `TAKEOVER_STARTED`
+- `TAKEOVER_MESSAGE_SENT`
 - `TAKEOVER_FINISHED`
 
 通知投递是辅助链路：

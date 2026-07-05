@@ -1,34 +1,96 @@
 package com.smartcs.agent.notification.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventResult;
+import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventView;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * 最小通知事件服务。
+ * 通知事件服务。
  *
- * 当前阶段不接 RocketMQ、不落库，只记录结构化日志并返回 ACCEPTED。
- * 后续需要站内信、短信、坐席提醒时，可以在这里替换为持久化或消息队列投递。
+ * <p>当前阶段只做 MySQL 可追踪事件，不引入 RocketMQ。后续如果需要短信、站内信、
+ * 坐席提醒或消息队列，可基于 notification_event 表继续扩展投递状态和重试策略。
  */
 @Service
 public class NotificationEventService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationEventService.class);
+    private static final String DEFAULT_CHANNEL = "USER_SESSION";
+    private static final String STATUS_ACCEPTED = "ACCEPTED";
+    private static final TypeReference<Map<String, Object>> PAYLOAD_TYPE = new TypeReference<>() {
+    };
+
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
+
+    public NotificationEventService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
+    }
 
     public NotificationEventResult accept(NotificationEventRequest request) {
-        String eventId = request.eventId() == null || request.eventId().isBlank()
-                ? "ntf_" + UUID.randomUUID()
-                : request.eventId();
-        String channel = request.channel() == null || request.channel().isBlank()
-                ? "USER_SESSION"
-                : request.channel();
+        String eventId = textOr(request.eventId(), "ntf_" + UUID.randomUUID());
+        String channel = textOr(request.channel(), DEFAULT_CHANNEL);
         Instant acceptedAt = Instant.now();
+        Instant occurredAt = request.occurredAt() == null ? acceptedAt : request.occurredAt();
+        Map<String, Object> payload = request.payload() == null ? Map.of() : request.payload();
+        jdbcTemplate.update(
+                """
+                INSERT INTO notification_event (
+                    event_id, trace_id, source_service, event_type, recipient_user_id,
+                    session_id, ticket_id, operator_id, channel, title, content, payload,
+                    status, occurred_at, accepted_at, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(3), NOW(3))
+                ON DUPLICATE KEY UPDATE
+                    trace_id = VALUES(trace_id),
+                    source_service = VALUES(source_service),
+                    event_type = VALUES(event_type),
+                    recipient_user_id = VALUES(recipient_user_id),
+                    session_id = VALUES(session_id),
+                    ticket_id = VALUES(ticket_id),
+                    operator_id = VALUES(operator_id),
+                    channel = VALUES(channel),
+                    title = VALUES(title),
+                    content = VALUES(content),
+                    payload = VALUES(payload),
+                    status = VALUES(status),
+                    occurred_at = VALUES(occurred_at),
+                    accepted_at = VALUES(accepted_at),
+                    updated_at = NOW(3)
+                """,
+                eventId,
+                request.traceId(),
+                request.sourceService(),
+                request.eventType(),
+                request.recipientUserId(),
+                request.sessionId(),
+                request.ticketId(),
+                request.operatorId(),
+                channel,
+                request.title(),
+                request.content(),
+                toJson(payload),
+                STATUS_ACCEPTED,
+                timestamp(occurredAt),
+                timestamp(acceptedAt));
         LOGGER.info(
-                "Notification event accepted eventId={} traceId={} eventType={} channel={} ticketId={} sessionId={} userId={} operatorId={} title={} contentLength={}",
+                "Notification event persisted eventId={} traceId={} eventType={} channel={} ticketId={} sessionId={} userId={} operatorId={} title={} contentLength={}",
                 eventId,
                 request.traceId(),
                 request.eventType(),
@@ -39,6 +101,122 @@ public class NotificationEventService {
                 request.operatorId(),
                 request.title(),
                 request.content() == null ? 0 : request.content().length());
-        return new NotificationEventResult(eventId, "ACCEPTED", channel, acceptedAt);
+        return new NotificationEventResult(eventId, STATUS_ACCEPTED, channel, acceptedAt);
+    }
+
+    public PageResult<NotificationEventView> list(
+            String eventType,
+            String ticketId,
+            String recipientUserId,
+            String status,
+            int pageNo,
+            int pageSize) {
+        int normalizedPageNo = Math.max(1, pageNo);
+        int normalizedPageSize = Math.min(100, Math.max(1, pageSize));
+        int offset = (normalizedPageNo - 1) * normalizedPageSize;
+        List<Object> params = new ArrayList<>();
+        String whereClause = buildWhereClause(eventType, ticketId, recipientUserId, status, params);
+        Long total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM notification_event" + whereClause,
+                Long.class,
+                params.toArray());
+        List<Object> queryParams = new ArrayList<>(params);
+        queryParams.add(normalizedPageSize);
+        queryParams.add(offset);
+        List<NotificationEventView> records = jdbcTemplate.query(
+                """
+                SELECT event_id, trace_id, source_service, event_type, recipient_user_id,
+                       session_id, ticket_id, operator_id, channel, title, content, payload,
+                       status, occurred_at, accepted_at, created_at, updated_at
+                FROM notification_event
+                """
+                        + whereClause
+                        + """
+
+                ORDER BY accepted_at DESC, event_id ASC
+                LIMIT ? OFFSET ?
+                """,
+                (rs, rowNum) -> mapEvent(rs),
+                queryParams.toArray());
+        return new PageResult<>(records, total == null ? 0L : total, normalizedPageNo, normalizedPageSize);
+    }
+
+    private String buildWhereClause(
+            String eventType,
+            String ticketId,
+            String recipientUserId,
+            String status,
+            List<Object> params) {
+        StringBuilder where = new StringBuilder(" WHERE 1 = 1");
+        if (eventType != null && !eventType.isBlank()) {
+            where.append(" AND event_type = ?");
+            params.add(eventType.trim());
+        }
+        if (ticketId != null && !ticketId.isBlank()) {
+            where.append(" AND ticket_id = ?");
+            params.add(ticketId.trim());
+        }
+        if (recipientUserId != null && !recipientUserId.isBlank()) {
+            where.append(" AND recipient_user_id = ?");
+            params.add(recipientUserId.trim());
+        }
+        if (status != null && !status.isBlank()) {
+            where.append(" AND status = ?");
+            params.add(status.trim().toUpperCase(Locale.ROOT));
+        }
+        return where.toString();
+    }
+
+    private NotificationEventView mapEvent(ResultSet rs) throws SQLException {
+        return new NotificationEventView(
+                rs.getString("event_id"),
+                rs.getString("trace_id"),
+                rs.getString("source_service"),
+                rs.getString("event_type"),
+                rs.getString("recipient_user_id"),
+                rs.getString("session_id"),
+                rs.getString("ticket_id"),
+                rs.getString("operator_id"),
+                rs.getString("channel"),
+                rs.getString("title"),
+                rs.getString("content"),
+                readPayload(rs.getString("payload")),
+                rs.getString("status"),
+                toInstant(rs.getTimestamp("occurred_at")),
+                toInstant(rs.getTimestamp("accepted_at")),
+                toInstant(rs.getTimestamp("created_at")),
+                toInstant(rs.getTimestamp("updated_at")));
+    }
+
+    private String textOr(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private String toJson(Map<String, Object> payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("通知事件 payload 序列化失败", exception);
+        }
+    }
+
+    private Map<String, Object> readPayload(String payloadJson) {
+        if (payloadJson == null || payloadJson.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(payloadJson, PAYLOAD_TYPE);
+        } catch (JsonProcessingException exception) {
+            LOGGER.warn("Notification payload JSON parse failed, fallback to empty payload. value={}", payloadJson);
+            return Map.of();
+        }
+    }
+
+    private Timestamp timestamp(Instant instant) {
+        return Timestamp.from(instant);
+    }
+
+    private Instant toInstant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
     }
 }

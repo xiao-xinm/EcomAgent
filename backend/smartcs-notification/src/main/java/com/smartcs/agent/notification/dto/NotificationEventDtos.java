@@ -35,4 +35,25 @@ public final class NotificationEventDtos {
             Instant acceptedAt
     ) {
     }
+
+    public record NotificationEventView(
+            String eventId,
+            String traceId,
+            String sourceService,
+            String eventType,
+            String recipientUserId,
+            String sessionId,
+            String ticketId,
+            String operatorId,
+            String channel,
+            String title,
+            String content,
+            Map<String, Object> payload,
+            String status,
+            Instant occurredAt,
+            Instant acceptedAt,
+            Instant createdAt,
+            Instant updatedAt
+    ) {
+    }
 }

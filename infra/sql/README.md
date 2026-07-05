@@ -12,6 +12,7 @@
 - `07-seed-skill-registry.sql`：技能注册初始化。
 - `08-work-order-internal-note-action.sql`：工单内部备注动作类型增量脚本。
 - `09-knowledge-faq-management.sql`：FAQ 知识库管理表结构和初始数据。
+- `10-notification-event-store.sql`：通知事件落库表结构。
 
 第一阶段已覆盖：
 
@@ -53,3 +54,9 @@
 - FAQ 管理：`knowledge_faq`
 
 `smartcs-knowledge` 查询链路优先读取 `knowledge_faq` 中的 `ACTIVE` 数据；表未初始化或没有可用数据时会回退到内置 FAQ。
+
+第六阶段已开始：
+
+- 通知事件：`notification_event`
+
+`smartcs-notification` 接收 Workbench 投递的审批、人工接管、人工消息等通知事件，并写入 `notification_event` 供后续查询、重试和事件解耦使用。
