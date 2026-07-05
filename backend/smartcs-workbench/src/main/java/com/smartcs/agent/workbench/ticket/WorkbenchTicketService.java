@@ -346,11 +346,10 @@ public class WorkbenchTicketService {
                 "approvalType", approval.approvalType(),
                 "approvalStatus", "APPROVED",
                 "workOrderStatus", "APPROVED");
-        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
+        publishUserServiceEvent(ticket, "SYSTEM", userMessage, request.operatorId(),
                 "APPROVAL_APPROVED",
+                "审批通过通知",
                 notificationData);
-        publishNotificationEvent(ticket, "APPROVAL_APPROVED", "审批通过通知", userMessage,
-                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "审批已通过");
         logActionResult("审批通过完成", actionResult, request.operatorId());
         return actionResult;
@@ -409,11 +408,10 @@ public class WorkbenchTicketService {
                 "approvalType", approval.approvalType(),
                 "approvalStatus", "REJECTED",
                 "workOrderStatus", "REJECTED");
-        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
+        publishUserServiceEvent(ticket, "SYSTEM", userMessage, request.operatorId(),
                 "APPROVAL_REJECTED",
+                "审批驳回通知",
                 notificationData);
-        publishNotificationEvent(ticket, "APPROVAL_REJECTED", "审批驳回通知", userMessage,
-                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "审批已驳回");
         logActionResult("审批驳回完成", actionResult, request.operatorId());
         return actionResult;
@@ -457,11 +455,10 @@ public class WorkbenchTicketService {
                 "approvalStatus", approval.status(),
                 "workOrderStatus", ticket.status(),
                 "decisionType", "REQUEST_MATERIALS");
-        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
+        publishUserServiceEvent(ticket, "SYSTEM", userMessage, request.operatorId(),
                 "APPROVAL_MATERIALS_REQUESTED",
+                "审批补充材料通知",
                 notificationData);
-        publishNotificationEvent(ticket, "APPROVAL_MATERIALS_REQUESTED", "审批补充材料通知", userMessage,
-                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "已要求用户补充材料");
         logActionResult("审批要求补充材料完成", actionResult, request.operatorId());
         return actionResult;
@@ -533,11 +530,10 @@ public class WorkbenchTicketService {
                 "takeoverId", currentTakeover.takeoverId(),
                 "takeoverStatus", currentTakeover.status(),
                 "decisionType", "TRANSFER_TAKEOVER");
-        insertUserVisibleMessage(ticket, "SYSTEM", userMessage, request.operatorId(),
+        publishUserServiceEvent(ticket, "SYSTEM", userMessage, request.operatorId(),
                 "APPROVAL_TRANSFERRED_TO_TAKEOVER",
+                "审批转人工接管通知",
                 notificationData);
-        publishNotificationEvent(ticket, "APPROVAL_TRANSFERRED_TO_TAKEOVER", "审批转人工接管通知", userMessage,
-                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "已转人工接管");
         logActionResult("审批转人工接管完成", actionResult, request.operatorId());
         return actionResult;
@@ -589,11 +585,10 @@ public class WorkbenchTicketService {
                 "takeoverId", takeover.takeoverId(),
                 "takeoverStatus", "IN_PROGRESS",
                 "workOrderStatus", "PROCESSING");
-        insertUserVisibleMessage(ticket, "HUMAN_AGENT", userMessage, request.operatorId(),
+        publishUserServiceEvent(ticket, "HUMAN_AGENT", userMessage, request.operatorId(),
                 "TAKEOVER_STARTED",
+                "人工客服接入通知",
                 notificationData);
-        publishNotificationEvent(ticket, "TAKEOVER_STARTED", "人工客服接入通知", userMessage,
-                request.operatorId(), notificationData);
         ActionResult result = currentResult(ticketId, "人工接管已开始");
         logActionResult("人工接管开始完成", result, request.operatorId());
         return result;
@@ -695,11 +690,10 @@ public class WorkbenchTicketService {
                 "takeoverId", takeover.takeoverId(),
                 "takeoverStatus", takeoverTarget,
                 "workOrderStatus", workOrderTarget);
-        insertUserVisibleMessage(ticket, "HUMAN_AGENT", userMessage, request.operatorId(),
+        publishUserServiceEvent(ticket, "HUMAN_AGENT", userMessage, request.operatorId(),
                 "TAKEOVER_FINISHED",
+                "人工客服处理结束通知",
                 notificationData);
-        publishNotificationEvent(ticket, "TAKEOVER_FINISHED", "人工客服处理结束通知", userMessage,
-                request.operatorId(), notificationData);
         ActionResult actionResult = currentResult(ticketId, "人工接管已结束");
         logActionResult("人工接管结束完成", actionResult, request.operatorId());
         return actionResult;
@@ -992,6 +986,23 @@ public class WorkbenchTicketService {
                 messageId,
                 role,
                 actionType);
+    }
+
+    /**
+     * 用户侧服务事件边界：先写用户可见消息，再投递通知事件。
+     *
+     * <p>Notification 是辅助链路，失败会在客户端记录 warn，不回滚坐席操作。
+     */
+    private void publishUserServiceEvent(
+            WorkOrderView ticket,
+            String role,
+            String content,
+            String operatorId,
+            String eventType,
+            String title,
+            Map<String, Object> metadata) {
+        insertUserVisibleMessage(ticket, role, content, operatorId, eventType, metadata);
+        publishNotificationEvent(ticket, eventType, title, content, operatorId, metadata);
     }
 
     private void publishNotificationEvent(
