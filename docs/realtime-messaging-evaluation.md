@@ -2,7 +2,7 @@
 
 本文档用于评估 SmartCS 用户端、APP H5 和坐席工作台是否需要从短轮询升级到实时消息。
 
-当前结论：**Phase 7 暂不立即实现 WebSocket**。现有短轮询已经覆盖最小闭环；下一步如果要提升实时体验，优先选择 SSE 作为用户端单向推送试点，WebSocket 留给后续真正双向人工聊天或多坐席协作。
+当前结论：**Phase 7 暂不立即实现 WebSocket**。现有短轮询已经覆盖最小闭环；如需提升实时体验，优先选择 SSE 作为用户端单向推送试点，WebSocket 留给后续真正双向人工聊天或多坐席协作。
 
 ## 1. 当前消息同步方式
 
@@ -102,6 +102,13 @@ SSE 试点原则：
 - SSE 只负责增量提示，断线后回退短轮询。
 - 仍以 `cs_message` 为消息事实来源。
 
+当前最小技术尖刺已实现：
+
+- Gateway 新增 `GET /api/chat/sessions/{sessionId}/events`。
+- 用户端 H5 可通过 `VITE_CHAT_SSE_ENABLED=true` 或 URL 参数 `?sse=true` 开启。
+- H5 收到 `message.created` 后复用 `GET /messages` 完整同步。
+- SSE 失败后自动回退短轮询。
+
 ### Step 3：WebSocket 双向聊天
 
 进入 WebSocket 的条件：
@@ -189,7 +196,7 @@ APP H5：
 
 - 不引入 Redis、RocketMQ 或 WebSocket。
 - 保持短轮询作为稳定基线。
-- 下一轮如要做实时体验，先做 SSE 技术尖刺，并保留轮询回退。
+- SSE 技术尖刺保持默认关闭，先用于本地和测试环境验证。
 
 暂缓事项：
 

@@ -42,3 +42,21 @@ export async function getSessionMessages(
   )
   return data
 }
+
+export function createSessionEventSource(
+  sessionId: string,
+  options: { lastMessageId?: string; limit?: number } = {},
+): EventSource {
+  const baseUrl = runtimeChatConfig.apiBaseUrl.replace(/\/$/, '')
+  const url = new URL(
+    `${baseUrl}/api/chat/sessions/${encodeURIComponent(sessionId)}/events`,
+    window.location.origin,
+  )
+  if (options.lastMessageId) {
+    url.searchParams.set('lastMessageId', options.lastMessageId)
+  }
+  if (options.limit) {
+    url.searchParams.set('limit', String(options.limit))
+  }
+  return new EventSource(url.toString())
+}

@@ -258,6 +258,7 @@
 
 - 已新增实时消息方案评估文档：`docs/realtime-messaging-evaluation.md`。
 - 当前结论是继续保留短轮询，后续如要提升实时体验，优先做用户端 SSE 试点，不立即实现 WebSocket。
+- 已完成 SSE 最小技术尖刺：Gateway 提供 `GET /api/chat/sessions/{sessionId}/events`，用户端 H5 可配置开启 SSE，失败后回退短轮询。
 
 ### Phase 8. 登录鉴权与权限
 

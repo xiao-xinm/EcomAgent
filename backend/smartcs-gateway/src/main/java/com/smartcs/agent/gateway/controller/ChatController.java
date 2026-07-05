@@ -9,13 +9,21 @@ import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.util.TraceIds;
 import jakarta.validation.Valid;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
@@ -38,11 +47,15 @@ public class ChatController {
     private static final ParameterizedTypeReference<ApiResponse<ChatSessionView>> CHAT_SESSION_TYPE =
             new ParameterizedTypeReference<>() {
             };
-    private static final ParameterizedTypeReference<ApiResponse<java.util.List<ChatMessageView>>> CHAT_MESSAGES_TYPE =
+    private static final ParameterizedTypeReference<ApiResponse<List<ChatMessageView>>> CHAT_MESSAGES_TYPE =
             new ParameterizedTypeReference<>() {
             };
     private static final String APPLICATION_JSON_UTF8 = "application/json;charset=UTF-8";
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
+    private static final long MIN_SSE_INTERVAL_MS = 1000L;
+    private static final long MAX_SSE_INTERVAL_MS = 15000L;
+    private static final int DEFAULT_MESSAGE_LIMIT = 100;
+    private static final int MAX_MESSAGE_LIMIT = 200;
 
     private final WebClient agentCoreClient;
 
@@ -142,11 +155,76 @@ public class ChatController {
     }
 
     @GetMapping(value = "/api/chat/sessions/{sessionId}/messages", produces = APPLICATION_JSON_UTF8)
-    public Mono<ApiResponse<java.util.List<ChatMessageView>>> listMessages(
+    public Mono<ApiResponse<List<ChatMessageView>>> listMessages(
             @PathVariable String sessionId,
             @RequestParam(defaultValue = "100") int limit) {
         String traceId = TraceIds.newTraceId();
-        LOGGER.info("Gateway查询会话消息 traceId={} sessionId={} limit={}", traceId, sessionId, limit);
+        int normalizedLimit = normalizeLimit(limit);
+        LOGGER.info("Gateway查询会话消息 traceId={} sessionId={} limit={}", traceId, sessionId, normalizedLimit);
+        return fetchSessionMessages(sessionId, normalizedLimit, traceId)
+                .doOnNext(response -> LOGGER.info(
+                        "Gateway完成会话消息查询 traceId={} sessionId={} code={}",
+                        traceId,
+                        sessionId,
+                        response.code()))
+                .onErrorResume(error -> {
+                    LOGGER.warn("Gateway查询会话消息失败 traceId={} sessionId={}", traceId, sessionId, error);
+                    return Mono.just(ApiResponse.<List<ChatMessageView>>failure(ErrorCode.INTERNAL_ERROR, traceId));
+                });
+    }
+
+    @GetMapping(value = "/api/chat/sessions/{sessionId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<Object>> streamSessionEvents(
+            @PathVariable String sessionId,
+            @RequestParam(required = false) String lastMessageId,
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(defaultValue = "3000") long intervalMs) {
+        String streamId = TraceIds.newTraceId();
+        int normalizedLimit = normalizeLimit(limit);
+        long normalizedIntervalMs = normalizeSseInterval(intervalMs);
+        Set<String> emittedMessageIds = ConcurrentHashMap.newKeySet();
+        AtomicBoolean firstFetch = new AtomicBoolean(true);
+        LOGGER.info(
+                "Gateway打开会话SSE streamId={} sessionId={} lastMessageId={} limit={} intervalMs={}",
+                streamId,
+                sessionId,
+                lastMessageId,
+                normalizedLimit,
+                normalizedIntervalMs);
+
+        Flux<ServerSentEvent<Object>> messageEvents = Flux
+                .interval(Duration.ZERO, Duration.ofMillis(normalizedIntervalMs))
+                .concatMap(tick -> fetchSessionMessages(sessionId, normalizedLimit, TraceIds.newTraceId())
+                        .map(response -> unseenMessages(response, emittedMessageIds, lastMessageId, firstFetch))
+                        .onErrorResume(error -> {
+                            LOGGER.warn("Gateway SSE拉取消息失败 streamId={} sessionId={}", streamId, sessionId, error);
+                            return Mono.just(List.of());
+                        }))
+                .flatMapIterable(messages -> messages)
+                .map(message -> ServerSentEvent.builder((Object) message)
+                        .id(message.messageId())
+                        .event("message.created")
+                        .build());
+        Flux<ServerSentEvent<Object>> heartbeatEvents = Flux
+                .interval(Duration.ofSeconds(15))
+                .map(tick -> ServerSentEvent.builder((Object) Map.of(
+                                "sessionId", sessionId,
+                                "timestamp", Instant.now().toString()))
+                        .event("heartbeat")
+                        .build());
+
+        return Flux.merge(messageEvents, heartbeatEvents)
+                .doFinally(signal -> LOGGER.info(
+                        "Gateway关闭会话SSE streamId={} sessionId={} signal={}",
+                        streamId,
+                        sessionId,
+                        signal));
+    }
+
+    private Mono<ApiResponse<List<ChatMessageView>>> fetchSessionMessages(
+            String sessionId,
+            int limit,
+            String traceId) {
         return agentCoreClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/api/agent/sessions/{sessionId}/messages")
@@ -155,16 +233,45 @@ public class ChatController {
                 .header(REQUEST_ID_HEADER, traceId)
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .retrieve()
-                .bodyToMono(CHAT_MESSAGES_TYPE)
-                .doOnNext(response -> LOGGER.info(
-                        "Gateway完成会话消息查询 traceId={} sessionId={} code={}",
-                        traceId,
-                        sessionId,
-                        response.code()))
-                .onErrorResume(error -> {
-                    LOGGER.warn("Gateway查询会话消息失败 traceId={} sessionId={}", traceId, sessionId, error);
-                    return Mono.just(ApiResponse.<java.util.List<ChatMessageView>>failure(ErrorCode.INTERNAL_ERROR, traceId));
-                });
+                .bodyToMono(CHAT_MESSAGES_TYPE);
+    }
+
+    private List<ChatMessageView> unseenMessages(
+            ApiResponse<List<ChatMessageView>> response,
+            Set<String> emittedMessageIds,
+            String lastMessageId,
+            AtomicBoolean firstFetch) {
+        if (!ErrorCode.SUCCESS.code().equals(response.code()) || response.data() == null) {
+            return List.of();
+        }
+        List<ChatMessageView> messages = response.data();
+        if (firstFetch.getAndSet(false) && hasText(lastMessageId)) {
+            return messagesAfterLastMessage(messages, emittedMessageIds, lastMessageId);
+        }
+        return messages.stream()
+                .filter(message -> emittedMessageIds.add(message.messageId()))
+                .toList();
+    }
+
+    private List<ChatMessageView> messagesAfterLastMessage(
+            List<ChatMessageView> messages,
+            Set<String> emittedMessageIds,
+            String lastMessageId) {
+        List<ChatMessageView> result = new ArrayList<>();
+        boolean afterLastMessage = false;
+        for (ChatMessageView message : messages) {
+            if (!afterLastMessage) {
+                emittedMessageIds.add(message.messageId());
+                if (lastMessageId.equals(message.messageId())) {
+                    afterLastMessage = true;
+                }
+                continue;
+            }
+            if (emittedMessageIds.add(message.messageId())) {
+                result.add(message);
+            }
+        }
+        return result;
     }
 
     private ChatRequest normalize(ChatRequest request) {
@@ -238,6 +345,14 @@ public class ChatController {
 
     private int contentLength(String content) {
         return content == null ? 0 : content.length();
+    }
+
+    private int normalizeLimit(int limit) {
+        return Math.min(MAX_MESSAGE_LIMIT, Math.max(1, limit <= 0 ? DEFAULT_MESSAGE_LIMIT : limit));
+    }
+
+    private long normalizeSseInterval(long intervalMs) {
+        return Math.min(MAX_SSE_INTERVAL_MS, Math.max(MIN_SSE_INTERVAL_MS, intervalMs));
     }
 
     private boolean hasText(String value) {

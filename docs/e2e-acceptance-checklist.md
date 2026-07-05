@@ -9,6 +9,7 @@
 - APP H5：复用用户端 H5 的聊天能力和短轮询策略，默认渠道为 `app-h5`
 
 实时消息升级方案见 [realtime-messaging-evaluation.md](./realtime-messaging-evaluation.md)。当前不要求启动 WebSocket、SSE、Redis 或 MQ。
+如需验收 SSE 技术尖刺，可在用户端 H5 设置 `VITE_CHAT_SSE_ENABLED=true` 或访问时追加 `?sse=true`；SSE 失败时页面应继续回退短轮询。
 
 ## 1. 启动服务
 

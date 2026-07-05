@@ -286,7 +286,38 @@ Invoke-RestMethod `
   -Uri "http://localhost:8080/api/chat/sessions/s_xxx/messages?limit=100"
 ```
 
-## 6. 测试流程
+## 6. 会话消息 SSE 事件流（可选试点）
+
+```http
+GET /api/chat/sessions/{sessionId}/events?lastMessageId=m_xxx&limit=100&intervalMs=3000
+Accept: text/event-stream
+```
+
+用途：
+
+- Phase 7 的 SSE 技术尖刺。
+- 作为短轮询之外的可选增量唤醒通道。
+- 当前不要求 Redis、RocketMQ 或 WebSocket。
+
+事件：
+
+- `message.created`：有新的用户可见消息，`data` 为 `ChatMessageView`。
+- `heartbeat`：连接保活，`data` 包含 `sessionId` 和 `timestamp`。
+
+查询参数：
+
+- `lastMessageId`：可选，前端已展示的最后一条远端消息 ID；后端首次拉取时只推送该消息之后的新消息。
+- `limit`：可选，默认 `100`，最大 `200`。
+- `intervalMs`：可选，默认 `3000`，服务端会限制在 `1000` 到 `15000` 毫秒之间。
+
+前端约定：
+
+- H5 首屏仍先调用 `GET /messages` 拉完整历史。
+- SSE 收到 `message.created` 后立即调用 `GET /messages` 做完整同步。
+- SSE 断开或浏览器不支持时，H5 回退原有短轮询。
+- 默认关闭，可通过 `VITE_CHAT_SSE_ENABLED=true` 或 URL 参数 `?sse=true` 开启。
+
+## 7. 测试流程
 
 先发送一个会触发确认的消息，例如：
 

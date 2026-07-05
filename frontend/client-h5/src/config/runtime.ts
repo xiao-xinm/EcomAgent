@@ -3,6 +3,7 @@ export interface RuntimeChatConfig {
   userId: string
   channel: string
   pollingIntervalMs: number
+  sseEnabled: boolean
   sessionStorageKey: string
 }
 
@@ -34,6 +35,15 @@ function numberOr(value: unknown, fallback: number): number {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback
 }
 
+function booleanOr(value: unknown, fallback: boolean): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value !== 'string') return fallback
+  const normalized = value.trim().toLowerCase()
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false
+  return fallback
+}
+
 const userId = queryText('userId', 'uid')
   || windowConfig.userId
   || envText(import.meta.env.VITE_USER_ID)
@@ -58,6 +68,12 @@ export const runtimeChatConfig: RuntimeChatConfig = {
       || windowConfig.pollingIntervalMs
       || import.meta.env.VITE_CHAT_POLLING_INTERVAL_MS,
     3000,
+  ),
+  sseEnabled: booleanOr(
+    queryText('sse', 'sseEnabled')
+      || windowConfig.sseEnabled
+      || import.meta.env.VITE_CHAT_SSE_ENABLED,
+    false,
   ),
   sessionStorageKey: queryText('sessionKey', 'sessionStorageKey')
     || windowConfig.sessionStorageKey

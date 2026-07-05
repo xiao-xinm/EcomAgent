@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_CHANNEL: string
   readonly VITE_PORT: string
   readonly VITE_CHAT_POLLING_INTERVAL_MS: string
+  readonly VITE_CHAT_SSE_ENABLED: string
 }
 
 interface ImportMeta {

@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { sendMessage, sendAction, getSessionMessages } from '@/services/api'
+import {
+  sendMessage,
+  sendAction,
+  getSessionMessages,
+  createSessionEventSource,
+} from '@/services/api'
 import type { ChatMessage } from '@/types/chat'
 import type { ChatRequest, ChatMessageView, QuickAction } from '@/types/api'
 import { ERROR_CODES } from '@/types/api'
@@ -10,6 +15,7 @@ const SESSION_STORAGE_KEY = runtimeChatConfig.sessionStorageKey
 const DEFAULT_USER_ID = runtimeChatConfig.userId
 const DEFAULT_CHANNEL = runtimeChatConfig.channel
 const POLLING_INTERVAL_MS = runtimeChatConfig.pollingIntervalMs
+const SSE_ENABLED = runtimeChatConfig.sseEnabled
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
@@ -80,6 +86,7 @@ export const useChatStore = defineStore('chat', () => {
   const syncing = ref(false)
   const error = ref<string | null>(null)
   let pollingTimer: number | undefined
+  let eventSource: EventSource | undefined
   let visibilityListenerBound = false
 
   const lastAgentMessage = computed(() =>
@@ -154,9 +161,68 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function startPolling() {
+  function startPollingTimer() {
     if (pollingTimer) return
     pollingTimer = window.setInterval(syncWhenVisible, POLLING_INTERVAL_MS)
+  }
+
+  function latestRemoteMessageId(): string | undefined {
+    return [...messages.value]
+      .reverse()
+      .find((message) => message.id !== 'welcome' && message.id.includes('_'))
+      ?.id
+  }
+
+  function closeEventSource() {
+    if (eventSource) {
+      eventSource.close()
+      eventSource = undefined
+    }
+  }
+
+  function restartEventSourceIfActive() {
+    if (!eventSource) return
+    closeEventSource()
+    startSse()
+  }
+
+  function startSse() {
+    if (!SSE_ENABLED || typeof EventSource === 'undefined') {
+      startPollingTimer()
+      return
+    }
+    if (eventSource) return
+
+    eventSource = createSessionEventSource(sessionId.value, {
+      lastMessageId: latestRemoteMessageId(),
+      limit: 100,
+    })
+    eventSource.addEventListener('open', () => {
+      error.value = null
+      if (pollingTimer) {
+        window.clearInterval(pollingTimer)
+        pollingTimer = undefined
+      }
+    })
+    eventSource.addEventListener('message.created', () => {
+      void syncMessages({ silent: true, force: true, suppressError: true })
+    })
+    eventSource.addEventListener('heartbeat', () => {
+      error.value = null
+    })
+    eventSource.onerror = () => {
+      closeEventSource()
+      startPollingTimer()
+      void syncMessages({ silent: true, force: true, suppressError: true })
+    }
+  }
+
+  function startPolling() {
+    if (SSE_ENABLED) {
+      startSse()
+    } else {
+      startPollingTimer()
+    }
     if (!visibilityListenerBound) {
       document.addEventListener('visibilitychange', syncWhenVisible)
       visibilityListenerBound = true
@@ -164,6 +230,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function stopPolling() {
+    closeEventSource()
     if (pollingTimer) {
       window.clearInterval(pollingTimer)
       pollingTimer = undefined
@@ -212,6 +279,7 @@ export const useChatStore = defineStore('chat', () => {
         if (reply.sessionId && reply.sessionId !== sessionId.value) {
           sessionId.value = reply.sessionId
           localStorage.setItem(SESSION_STORAGE_KEY, reply.sessionId)
+          restartEventSourceIfActive()
         }
 
         const agentMsg: ChatMessage = {
@@ -303,6 +371,7 @@ export const useChatStore = defineStore('chat', () => {
         if (reply.sessionId && reply.sessionId !== sessionId.value) {
           sessionId.value = reply.sessionId
           localStorage.setItem(SESSION_STORAGE_KEY, reply.sessionId)
+          restartEventSourceIfActive()
         }
 
         const agentMsg: ChatMessage = {
@@ -354,6 +423,7 @@ export const useChatStore = defineStore('chat', () => {
     localStorage.setItem(SESSION_STORAGE_KEY, id)
     messages.value = []
     error.value = null
+    restartEventSourceIfActive()
   }
 
   return {
