@@ -1,8 +1,10 @@
 package com.smartcs.agent.gateway.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthPrincipalException;
 import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.auth.AuthSource;
 import com.smartcs.agent.common.auth.JwtAuthProperties;
@@ -37,6 +39,32 @@ class GatewayIdentityResolverTest {
         assertThat(principal.principalType()).isEqualTo(PrincipalType.CUSTOMER);
         assertThat(principal.roles()).containsExactly(AuthRoles.CUSTOMER);
         assertThat(principal.authSource()).isEqualTo(AuthSource.BEARER_TOKEN);
+    }
+
+    @Test
+    void strictAuthRejectsLegacyUserIdFallback() {
+        GatewayIdentityResolver resolver = new GatewayIdentityResolver();
+        resolver.configureStrictAuthForTest(true);
+
+        assertThatThrownBy(() -> resolver.resolveCustomer(HttpHeaders.EMPTY, "u_body"))
+                .isInstanceOfSatisfying(AuthPrincipalException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1002"));
+    }
+
+    @Test
+    void strictAuthRejectsTrustedIdentityMismatch() {
+        GatewayIdentityResolver resolver = new GatewayIdentityResolver();
+        resolver.configureJwtForTest(new JwtAuthProperties(true, SECRET, "", ""));
+        resolver.configureStrictAuthForTest(true);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token(Map.of(
+                "sub", "u_token",
+                "principal_type", "CUSTOMER",
+                "roles", List.of("CUSTOMER"))));
+
+        assertThatThrownBy(() -> resolver.resolveCustomer(headers, "u_body"))
+                .isInstanceOfSatisfying(AuthPrincipalException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1003"));
     }
 
     private String token(Map<String, Object> claims) {

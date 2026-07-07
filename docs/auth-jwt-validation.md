@@ -19,6 +19,7 @@
 ```yaml
 smartcs:
   auth:
+    strict-enabled: false
     jwt:
       enabled: false
       secret:
@@ -29,6 +30,7 @@ smartcs:
 对应环境变量：
 
 ```bash
+SMARTCS_AUTH_STRICT_ENABLED=true
 SMARTCS_AUTH_JWT_ENABLED=true
 SMARTCS_AUTH_JWT_SECRET=0123456789abcdef0123456789abcdef
 SMARTCS_AUTH_JWT_ISSUER=smartcs
@@ -37,6 +39,8 @@ SMARTCS_AUTH_JWT_AUDIENCE=gateway
 
 说明：
 
+- `strict-enabled` 默认为 `false`，保持本地开发兼容链路。
+- `strict-enabled=true` 后，只接受 Bearer JWT 或标准身份头，不再使用开发身份头、旧请求体身份字段和 Workbench 本地兜底坐席。
 - `secret` 使用 HMAC 签名密钥，长度至少 32 字节。
 - `issuer` 和 `audience` 为空时不校验对应 claim。
 - Gateway 和 Workbench 使用同一组配置项，后续如果需要拆分用户端/坐席端密钥，可以再单独增加配置。
@@ -89,6 +93,8 @@ Workbench 坐席身份解析顺序：
 - Workbench 的 Bearer JWT 必须解析为 `AGENT` / `SUPERVISOR` / `ADMIN`，不能用用户 Token 回退到请求体 `operatorId`。
 - Gateway 的 Bearer JWT 只接受 `CUSTOMER`。
 - JWT 默认关闭时，即使请求里带了 Bearer Token，也继续走原兼容链路。
+- `strict-enabled=true` 时，Gateway / Workbench 缺少可信身份会返回 `1002 UNAUTHORIZED`。
+- `strict-enabled=true` 时，如果请求体 `userId` / `operatorId` 与可信身份不一致，会返回 `1003 FORBIDDEN`。
 
 ## Error Semantics
 
@@ -96,6 +102,8 @@ Workbench 坐席身份解析顺序：
 
 - Token 签名无效、缺少 `sub`、issuer/audience 不匹配：返回 `1002 UNAUTHORIZED`。
 - Workbench 使用用户 Token 调用坐席操作：返回 `1002 UNAUTHORIZED`。
+- 强制鉴权开启后缺少可信身份：返回 `1002 UNAUTHORIZED`。
+- 强制鉴权开启后请求体身份与可信身份冲突：返回 `1003 FORBIDDEN`。
 - 坐席身份存在但无坐席角色：继续返回 `1003 FORBIDDEN`。
 
 ## Verification
@@ -113,8 +121,13 @@ mvn -pl smartcs-common,smartcs-gateway,smartcs-workbench -am test
 - 公共 JWT 解析器会拒绝 issuer 不匹配的 Token。
 - JWT 关闭时不影响现有兼容链路。
 - Gateway Bearer Token 优先于开发头和旧 `userId`。
+- Gateway 强制鉴权开启后拒绝旧 `userId` 兜底。
+- Gateway 强制鉴权开启后拒绝 Token 用户与请求体 `userId` 不一致。
 - Workbench Bearer Token 优先于旧 `operatorId`。
 - Workbench 用户 Token 不能回退成坐席身份。
+- Workbench 强制鉴权开启后拒绝旧 `operatorId` 和本地兜底坐席。
+- Workbench 强制鉴权开启后拒绝 Token 坐席与请求体 `operatorId` 不一致。
+- Workbench 工单列表、统计、详情、操作日志读取接口已统一经过坐席身份校验。
 
 ## Middleware
 

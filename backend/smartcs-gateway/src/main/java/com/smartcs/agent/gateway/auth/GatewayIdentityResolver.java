@@ -1,12 +1,14 @@
 package com.smartcs.agent.gateway.auth;
 
 import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthPrincipalException;
 import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.auth.AuthSource;
 import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
 import com.smartcs.agent.common.auth.BearerTokenPrincipalParser;
 import com.smartcs.agent.common.auth.JwtAuthProperties;
 import com.smartcs.agent.common.auth.PrincipalType;
+import com.smartcs.agent.common.enums.ErrorCode;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,14 +33,20 @@ public class GatewayIdentityResolver {
     @Value("${smartcs.auth.jwt.audience:}")
     private String jwtAudience;
 
+    @Value("${smartcs.auth.strict-enabled:false}")
+    private boolean strictAuthEnabled;
+
     public Optional<AuthenticatedPrincipal> resolveCustomer(HttpHeaders headers, String legacyUserId) {
         Optional<AuthenticatedPrincipal> bearerPrincipal = resolveBearerCustomer(headers);
         if (bearerPrincipal.isPresent()) {
-            return bearerPrincipal;
+            return trustedCustomer(bearerPrincipal, legacyUserId);
         }
         Optional<AuthenticatedPrincipal> standardPrincipal = resolveStandardCustomer(headers);
         if (standardPrincipal.isPresent()) {
-            return standardPrincipal;
+            return trustedCustomer(standardPrincipal, legacyUserId);
+        }
+        if (strictAuthEnabled) {
+            throw new AuthPrincipalException(ErrorCode.UNAUTHORIZED, "Customer authentication is required");
         }
         String devUserId = firstHeader(headers, AuthHeaders.DEV_USER_ID);
         if (hasText(devUserId)) {
@@ -62,6 +70,23 @@ public class GatewayIdentityResolver {
         this.jwtSecret = safeProperties.secret();
         this.jwtIssuer = safeProperties.issuer();
         this.jwtAudience = safeProperties.audience();
+    }
+
+    void configureStrictAuthForTest(boolean strictAuthEnabled) {
+        this.strictAuthEnabled = strictAuthEnabled;
+    }
+
+    private Optional<AuthenticatedPrincipal> trustedCustomer(
+            Optional<AuthenticatedPrincipal> principal,
+            String legacyUserId) {
+        principal.ifPresent(value -> rejectIdentityMismatch(value, legacyUserId));
+        return principal;
+    }
+
+    private void rejectIdentityMismatch(AuthenticatedPrincipal principal, String legacyUserId) {
+        if (strictAuthEnabled && hasText(legacyUserId) && !principal.principalId().equals(legacyUserId)) {
+            throw new AuthPrincipalException(ErrorCode.FORBIDDEN, "Request userId does not match trusted identity");
+        }
     }
 
     private Optional<AuthenticatedPrincipal> resolveBearerCustomer(HttpHeaders headers) {

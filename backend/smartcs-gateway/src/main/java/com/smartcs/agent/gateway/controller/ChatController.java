@@ -9,6 +9,7 @@ import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthPrincipalException;
 import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
 import com.smartcs.agent.common.auth.JwtPrincipalException;
 import com.smartcs.agent.gateway.auth.GatewayIdentityResolver;
@@ -85,6 +86,8 @@ public class ChatController {
         Optional<AuthenticatedPrincipal> principal;
         try {
             principal = identityResolver.resolveCustomer(headers, request.userId());
+        } catch (AuthPrincipalException exception) {
+            return authFailureResponse(requestTraceId(request.traceId()), exception);
         } catch (JwtPrincipalException exception) {
             return unauthorizedResponse(requestTraceId(request.traceId()), exception);
         }
@@ -128,6 +131,8 @@ public class ChatController {
         Optional<AuthenticatedPrincipal> principal;
         try {
             principal = identityResolver.resolveCustomer(headers, request.userId());
+        } catch (AuthPrincipalException exception) {
+            return authFailureResponse(requestTraceId(request.traceId()), exception);
         } catch (JwtPrincipalException exception) {
             return unauthorizedResponse(requestTraceId(request.traceId()), exception);
         }
@@ -171,6 +176,8 @@ public class ChatController {
         Optional<AuthenticatedPrincipal> principal;
         try {
             principal = identityResolver.resolveCustomer(headers, null);
+        } catch (AuthPrincipalException exception) {
+            return authFailureResponse(traceId, exception);
         } catch (JwtPrincipalException exception) {
             return unauthorizedResponse(traceId, exception);
         }
@@ -208,6 +215,8 @@ public class ChatController {
         Optional<AuthenticatedPrincipal> principal;
         try {
             principal = identityResolver.resolveCustomer(headers, null);
+        } catch (AuthPrincipalException exception) {
+            return authFailureResponse(traceId, exception);
         } catch (JwtPrincipalException exception) {
             return unauthorizedResponse(traceId, exception);
         }
@@ -243,6 +252,8 @@ public class ChatController {
         Optional<AuthenticatedPrincipal> principal;
         try {
             principal = identityResolver.resolveCustomer(headers, null);
+        } catch (AuthPrincipalException exception) {
+            return authFailureStream(streamId, exception);
         } catch (JwtPrincipalException exception) {
             return unauthorizedStream(streamId, exception);
         }
@@ -309,9 +320,29 @@ public class ChatController {
         return Mono.just(ApiResponse.failure(ErrorCode.UNAUTHORIZED, traceId));
     }
 
+    private <T> Mono<ApiResponse<T>> authFailureResponse(String traceId, AuthPrincipalException exception) {
+        LOGGER.warn(
+                "Gateway拒绝未授权身份 traceId={} code={} reason={}",
+                traceId,
+                exception.errorCode().code(),
+                exception.getMessage());
+        return Mono.just(ApiResponse.failure(exception.errorCode(), traceId));
+    }
+
     private Flux<ServerSentEvent<Object>> unauthorizedStream(String streamId, JwtPrincipalException exception) {
         LOGGER.warn("Gateway拒绝无效SSE Bearer Token streamId={} reason={}", streamId, exception.getMessage());
         return Flux.just(ServerSentEvent.builder((Object) ApiResponse.failure(ErrorCode.UNAUTHORIZED, streamId))
+                .event("auth.error")
+                .build());
+    }
+
+    private Flux<ServerSentEvent<Object>> authFailureStream(String streamId, AuthPrincipalException exception) {
+        LOGGER.warn(
+                "Gateway拒绝SSE未授权身份 streamId={} code={} reason={}",
+                streamId,
+                exception.errorCode().code(),
+                exception.getMessage());
+        return Flux.just(ServerSentEvent.builder((Object) ApiResponse.failure(exception.errorCode(), streamId))
                 .event("auth.error")
                 .build());
     }

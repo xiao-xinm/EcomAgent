@@ -293,7 +293,9 @@
 - `smartcs-common` 已新增无状态 Bearer JWT 解析器，支持 `sub`、`principal_type`、`roles`、`permissions`、`iss`、`aud`。
 - Gateway 已支持可配置 Bearer JWT 用户身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `userId`。
 - Workbench 已支持可配置 Bearer JWT 坐席身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `operatorId`，且用户 Token 不能回退成坐席身份。
-- 下一轮应补真实登录跳转、Token 获取/刷新策略和生产环境强制鉴权开关。
+- Gateway / Workbench 已新增 `smartcs.auth.strict-enabled` 强制鉴权开关，默认关闭；开启后不再使用开发头、旧请求体身份和 Workbench 本地坐席兜底。
+- Workbench 工单列表、统计、详情和操作日志读取接口已统一经过坐席身份校验。
+- 下一轮应补真实登录跳转、Token 获取/刷新策略，以及用户会话归属校验。
 
 中间件要求：
 

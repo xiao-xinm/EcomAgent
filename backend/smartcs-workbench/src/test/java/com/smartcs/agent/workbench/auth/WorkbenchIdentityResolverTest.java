@@ -3,6 +3,7 @@ package com.smartcs.agent.workbench.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.smartcs.agent.common.auth.AuthPrincipalException;
 import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.auth.AuthSource;
 import com.smartcs.agent.common.auth.JwtAuthProperties;
@@ -51,6 +52,32 @@ class WorkbenchIdentityResolverTest {
 
         assertThatThrownBy(() -> resolver.resolveAgent(headers, "agent_body"))
                 .isInstanceOf(JwtPrincipalException.class);
+    }
+
+    @Test
+    void strictAuthRejectsLegacyOperatorIdFallback() {
+        WorkbenchIdentityResolver resolver = new WorkbenchIdentityResolver();
+        resolver.configureStrictAuthForTest(true);
+
+        assertThatThrownBy(() -> resolver.resolveAgent(HttpHeaders.EMPTY, "agent_body"))
+                .isInstanceOfSatisfying(AuthPrincipalException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1002"));
+    }
+
+    @Test
+    void strictAuthRejectsTrustedOperatorMismatch() {
+        WorkbenchIdentityResolver resolver = new WorkbenchIdentityResolver();
+        resolver.configureJwtForTest(new JwtAuthProperties(true, SECRET, "", ""));
+        resolver.configureStrictAuthForTest(true);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token(Map.of(
+                "sub", "agent_token",
+                "principal_type", "AGENT",
+                "roles", List.of("AGENT"))));
+
+        assertThatThrownBy(() -> resolver.resolveAgent(headers, "agent_body"))
+                .isInstanceOfSatisfying(AuthPrincipalException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1003"));
     }
 
     private String token(Map<String, Object> claims) {

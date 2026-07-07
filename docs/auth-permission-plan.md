@@ -18,8 +18,12 @@
 - `smartcs-common` 已新增无状态 Bearer JWT 解析器，支持签名校验、issuer/audience 校验、角色解析和权限解析。
 - `smartcs-gateway` 已支持可配置 Bearer JWT 用户身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `userId`。
 - `smartcs-workbench` 已支持可配置 Bearer JWT 坐席身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `operatorId`，且用户 Token 不能回退成坐席身份。
+- `smartcs-gateway` / `smartcs-workbench` 已新增 `smartcs.auth.strict-enabled`，默认关闭；开启后只接受 Bearer JWT 或标准身份头。
+- 强制鉴权开启后，Gateway 不再接受旧请求体 `userId` 兜底，Workbench 不再接受旧请求体 `operatorId`、开发头和本地 `agent_001` 兜底。
+- 强制鉴权开启后，请求体身份与可信身份冲突会返回 `1003 FORBIDDEN`。
+- Workbench 工单列表、统计、详情和操作日志读取接口已统一经过坐席身份校验。
 - 已新增 JWT 校验接入说明：`docs/auth-jwt-validation.md`。
-- 当前仍是兼容模式：不强制登录、不新增 Redis Session，真实登录跳转和 Token 获取/刷新留到后续收紧阶段。
+- 当前默认仍是兼容模式：不新增 Redis Session，真实登录跳转和 Token 获取/刷新留到后续收紧阶段。
 
 ## 1. 当前问题
 
@@ -199,7 +203,8 @@ X-SmartCS-Roles: CUSTOMER,AGENT
    - 前端开始从 Token / 当前用户接口获取身份。
 
 3. **收紧期 C：强制鉴权**
-   - 生产环境必须携带 Token。
+   - 生产环境通过 `smartcs.auth.strict-enabled=true` 开启强制鉴权。
+   - 强制鉴权开启后必须携带 Bearer Token 或可信上游标准身份头。
    - 请求体身份不一致直接返回无权限。
    - 文档把 `userId` / `operatorId` 标记为兼容字段或移除。
 
@@ -223,9 +228,11 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 
 - 用户端携带有效 Token 发送“我的订单”，仍返回 `AUTO_REPLY` 和 `skillExecutionId`。
 - 用户端 Token 与请求体 `userId` 不一致时，生产模式返回无权限。
+- 用户端强制鉴权开启且缺少可信身份时返回未登录。
 - 用户端会话消息轮询和 SSE 只能读取当前用户会话。
 - 坐席端携带有效 Token 能查看工单列表和详情。
 - 坐席端领取、审批、接管、发送人工消息时，操作日志中的操作人来自 Token。
+- 坐席端强制鉴权开启且缺少可信身份时，列表、详情、统计、操作接口都返回未登录。
 - 无坐席权限的身份调用 Workbench 操作接口时返回无权限。
 - 前端能识别未登录、权限不足和登录过期，不出现静默失败。
 

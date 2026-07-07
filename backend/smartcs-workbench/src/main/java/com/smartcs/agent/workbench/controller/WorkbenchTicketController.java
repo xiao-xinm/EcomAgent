@@ -61,6 +61,7 @@ public class WorkbenchTicketController {
 
     @GetMapping(value = "/api/workbench/tickets", produces = APPLICATION_JSON_UTF8)
     public ApiResponse<PageResult<TicketSummary>> listTickets(
+            @RequestHeader HttpHeaders headers,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String routeDecision,
             @RequestParam(required = false) String riskLevel,
@@ -73,6 +74,7 @@ public class WorkbenchTicketController {
             @RequestParam(defaultValue = "1") int pageNo,
             @RequestParam(defaultValue = "20") int pageSize) {
         String traceId = TraceIds.newTraceId();
+        requireWorkbenchOperator(headers, null);
         PageResult<TicketSummary> result = ticketService.listTickets(
                 status,
                 routeDecision,
@@ -89,20 +91,27 @@ public class WorkbenchTicketController {
     }
 
     @GetMapping(value = "/api/workbench/tickets/stats", produces = APPLICATION_JSON_UTF8)
-    public ApiResponse<TicketStatsView> getTicketStats() {
+    public ApiResponse<TicketStatsView> getTicketStats(@RequestHeader HttpHeaders headers) {
         String traceId = TraceIds.newTraceId();
+        requireWorkbenchOperator(headers, null);
         return ApiResponse.success(ticketService.getTicketStats(), traceId);
     }
 
     @GetMapping(value = "/api/workbench/tickets/{ticketId}", produces = APPLICATION_JSON_UTF8)
-    public ApiResponse<TicketDetail> getTicketDetail(@PathVariable String ticketId) {
+    public ApiResponse<TicketDetail> getTicketDetail(
+            @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers) {
         String traceId = TraceIds.newTraceId();
+        requireWorkbenchOperator(headers, null);
         return ApiResponse.success(ticketService.getTicketDetail(ticketId), traceId);
     }
 
     @GetMapping(value = "/api/workbench/tickets/{ticketId}/actions", produces = APPLICATION_JSON_UTF8)
-    public ApiResponse<List<ActionLogView>> listActions(@PathVariable String ticketId) {
+    public ApiResponse<List<ActionLogView>> listActions(
+            @PathVariable String ticketId,
+            @RequestHeader HttpHeaders headers) {
         String traceId = TraceIds.newTraceId();
+        requireWorkbenchOperator(headers, null);
         return ApiResponse.success(ticketService.listActions(ticketId), traceId);
     }
 

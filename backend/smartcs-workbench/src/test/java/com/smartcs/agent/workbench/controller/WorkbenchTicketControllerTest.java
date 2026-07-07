@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthPrincipalException;
 import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class WorkbenchTicketControllerTest {
 
@@ -69,6 +71,7 @@ class WorkbenchTicketControllerTest {
 
         ApiResponse<PageResult<TicketSummary>> response =
                 controller.listTickets(
+                        HttpHeaders.EMPTY,
                         "PENDING",
                         "HUMAN_REVIEW",
                         "L3",
@@ -106,7 +109,7 @@ class WorkbenchTicketControllerTest {
         TicketStatsView stats = new TicketStatsView(12, 4, 3, 5, 1);
         when(ticketService.getTicketStats()).thenReturn(stats);
 
-        ApiResponse<TicketStatsView> response = controller.getTicketStats();
+        ApiResponse<TicketStatsView> response = controller.getTicketStats(HttpHeaders.EMPTY);
 
         assertThat(response.code()).isEqualTo("0000");
         assertThat(response.traceId()).isNotBlank();
@@ -224,6 +227,31 @@ class WorkbenchTicketControllerTest {
         assertThat(response.data().principalType()).isEqualTo("AGENT");
         assertThat(response.data().roles()).containsExactly("AGENT");
         assertThat(response.data().authSource()).isEqualTo("DEV_FALLBACK");
+    }
+
+    @Test
+    void strictAuthRequiresTrustedOperatorForListTickets() {
+        WorkbenchTicketService ticketService = mock(WorkbenchTicketService.class);
+        WorkbenchIdentityResolver resolver = new WorkbenchIdentityResolver();
+        ReflectionTestUtils.setField(resolver, "strictAuthEnabled", true);
+        WorkbenchTicketController controller = new WorkbenchTicketController(ticketService, resolver);
+
+        assertThatThrownBy(() -> controller.listTickets(
+                HttpHeaders.EMPTY,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                1,
+                20))
+                .isInstanceOfSatisfying(AuthPrincipalException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1002"));
+        verifyNoInteractions(ticketService);
     }
 
     private WorkbenchTicketController newController(WorkbenchTicketService ticketService) {

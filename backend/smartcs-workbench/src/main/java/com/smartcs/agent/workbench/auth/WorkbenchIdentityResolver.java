@@ -1,12 +1,14 @@
 package com.smartcs.agent.workbench.auth;
 
 import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthPrincipalException;
 import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.auth.AuthSource;
 import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
 import com.smartcs.agent.common.auth.BearerTokenPrincipalParser;
 import com.smartcs.agent.common.auth.JwtAuthProperties;
 import com.smartcs.agent.common.auth.PrincipalType;
+import com.smartcs.agent.common.enums.ErrorCode;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,14 +35,20 @@ public class WorkbenchIdentityResolver {
     @Value("${smartcs.auth.jwt.audience:}")
     private String jwtAudience;
 
+    @Value("${smartcs.auth.strict-enabled:false}")
+    private boolean strictAuthEnabled;
+
     public AuthenticatedPrincipal resolveAgent(HttpHeaders headers, String legacyOperatorId) {
         Optional<AuthenticatedPrincipal> bearerPrincipal = resolveBearerAgent(headers);
         if (bearerPrincipal.isPresent()) {
-            return bearerPrincipal.get();
+            return trustedAgent(bearerPrincipal.get(), legacyOperatorId);
         }
         Optional<AuthenticatedPrincipal> standardPrincipal = resolveStandardAgent(headers);
         if (standardPrincipal.isPresent()) {
-            return standardPrincipal.get();
+            return trustedAgent(standardPrincipal.get(), legacyOperatorId);
+        }
+        if (strictAuthEnabled) {
+            throw new AuthPrincipalException(ErrorCode.UNAUTHORIZED, "Workbench authentication is required");
         }
         String devOperatorId = firstHeader(headers, AuthHeaders.DEV_OPERATOR_ID);
         if (hasText(devOperatorId)) {
@@ -70,6 +78,17 @@ public class WorkbenchIdentityResolver {
         this.jwtSecret = safeProperties.secret();
         this.jwtIssuer = safeProperties.issuer();
         this.jwtAudience = safeProperties.audience();
+    }
+
+    void configureStrictAuthForTest(boolean strictAuthEnabled) {
+        this.strictAuthEnabled = strictAuthEnabled;
+    }
+
+    private AuthenticatedPrincipal trustedAgent(AuthenticatedPrincipal principal, String legacyOperatorId) {
+        if (strictAuthEnabled && hasText(legacyOperatorId) && !principal.principalId().equals(legacyOperatorId)) {
+            throw new AuthPrincipalException(ErrorCode.FORBIDDEN, "Request operatorId does not match trusted identity");
+        }
+        return principal;
     }
 
     private Optional<AuthenticatedPrincipal> resolveBearerAgent(HttpHeaders headers) {

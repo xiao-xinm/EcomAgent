@@ -21,6 +21,7 @@ smartcs:
   agent-core:
     base-url: ${SMARTCS_AGENT_CORE_BASE_URL:http://localhost:8081}
   auth:
+    strict-enabled: ${SMARTCS_AUTH_STRICT_ENABLED:false}
     jwt:
       enabled: ${SMARTCS_AUTH_JWT_ENABLED:false}
       secret: ${SMARTCS_AUTH_JWT_SECRET:}
