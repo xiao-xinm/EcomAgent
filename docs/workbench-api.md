@@ -84,6 +84,7 @@ Workbench 操作接口的兼容规则：
 - 本阶段不强制鉴权，不校验 JWT 签名，不引入 Redis Session。
 - 坐席前端已将 `401` / `1002` 映射为“登录已过期”，将 `403` / `1003` 映射为“没有权限执行该操作”。
 - 坐席前端会基于 `CurrentOperatorView.principalType`、`roles` 和 `operatorId` 控制领取、审批、接管、人工消息和内部备注按钮。
+- 后端操作接口会校验解析后的坐席角色，非 `AGENT` / `SUPERVISOR` / `ADMIN` 返回 `1003`；如果请求已携带标准身份头且身份类型不是坐席身份，不允许再回退使用请求体 `operatorId`。
 
 ## 3. 状态枚举
 

@@ -3,7 +3,11 @@ package com.smartcs.agent.workbench.controller;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.common.util.TraceIds;
+import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
+import com.smartcs.agent.common.auth.PrincipalType;
+import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.workbench.auth.WorkbenchIdentityResolver;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionLogView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
@@ -16,11 +20,13 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
+import com.smartcs.agent.workbench.ticket.WorkbenchOperationException;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -49,7 +55,7 @@ public class WorkbenchTicketController {
     @GetMapping(value = "/api/workbench/me", produces = APPLICATION_JSON_UTF8)
     public ApiResponse<CurrentOperatorView> getCurrentOperator(@RequestHeader HttpHeaders headers) {
         String traceId = TraceIds.newTraceId();
-        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, null);
+        AuthenticatedPrincipal principal = requireWorkbenchOperator(headers, null);
         return ApiResponse.success(toCurrentOperatorView(principal), traceId);
     }
 
@@ -219,12 +225,12 @@ public class WorkbenchTicketController {
     }
 
     private OperatorActionRequest withOperator(OperatorActionRequest request, HttpHeaders headers) {
-        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        AuthenticatedPrincipal principal = requireWorkbenchOperator(headers, request.operatorId());
         return new OperatorActionRequest(principal.principalId(), request.comment(), request.payload());
     }
 
     private ApprovalDecisionRequest withOperator(ApprovalDecisionRequest request, HttpHeaders headers) {
-        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        AuthenticatedPrincipal principal = requireWorkbenchOperator(headers, request.operatorId());
         return new ApprovalDecisionRequest(
                 principal.principalId(),
                 request.comment(),
@@ -233,7 +239,7 @@ public class WorkbenchTicketController {
     }
 
     private TakeoverFinishRequest withOperator(TakeoverFinishRequest request, HttpHeaders headers) {
-        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        AuthenticatedPrincipal principal = requireWorkbenchOperator(headers, request.operatorId());
         return new TakeoverFinishRequest(
                 principal.principalId(),
                 request.comment(),
@@ -242,12 +248,51 @@ public class WorkbenchTicketController {
     }
 
     private TakeoverMessageRequest withOperator(TakeoverMessageRequest request, HttpHeaders headers) {
-        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        AuthenticatedPrincipal principal = requireWorkbenchOperator(headers, request.operatorId());
         return new TakeoverMessageRequest(principal.principalId(), request.content(), request.payload());
     }
 
     private InternalNoteRequest withOperator(InternalNoteRequest request, HttpHeaders headers) {
-        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, request.operatorId());
+        AuthenticatedPrincipal principal = requireWorkbenchOperator(headers, request.operatorId());
         return new InternalNoteRequest(principal.principalId(), request.comment(), request.payload());
+    }
+
+    private AuthenticatedPrincipal requireWorkbenchOperator(HttpHeaders headers, String legacyOperatorId) {
+        rejectInvalidStandardPrincipal(headers);
+        AuthenticatedPrincipal principal = identityResolver.resolveAgent(headers, legacyOperatorId);
+        if (!principal.hasAnyRole(AuthRoles.AGENT, AuthRoles.SUPERVISOR, AuthRoles.ADMIN)) {
+            throw forbidden("Current identity has no workbench role");
+        }
+        return principal;
+    }
+
+    private void rejectInvalidStandardPrincipal(HttpHeaders headers) {
+        String principalId = firstHeader(headers, AuthHeaders.PRINCIPAL_ID);
+        String principalType = firstHeader(headers, AuthHeaders.PRINCIPAL_TYPE);
+        if (!hasText(principalId) && !hasText(principalType)) {
+            return;
+        }
+        Optional<PrincipalType> parsedType = PrincipalType.parse(principalType);
+        if (parsedType.isEmpty() || !isWorkbenchPrincipal(parsedType.get())) {
+            throw forbidden("Current identity is not a workbench operator");
+        }
+    }
+
+    private boolean isWorkbenchPrincipal(PrincipalType principalType) {
+        return principalType == PrincipalType.AGENT
+                || principalType == PrincipalType.SUPERVISOR
+                || principalType == PrincipalType.ADMIN;
+    }
+
+    private String firstHeader(HttpHeaders headers, String name) {
+        return headers == null ? null : headers.getFirst(name);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private WorkbenchOperationException forbidden(String message) {
+        return new WorkbenchOperationException(ErrorCode.FORBIDDEN, message);
     }
 }

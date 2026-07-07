@@ -14,6 +14,7 @@
 - `frontend/workstation` 已通过运行时配置发送开发坐席身份头，操作前调用 `GET /api/workbench/me` 获取当前坐席，不再由页面硬编码操作人。
 - `frontend/client-h5` 和 `frontend/workstation` 已对 `401`、`403`、`1002`、`1003` 做统一错误文案归一化。
 - `frontend/workstation` 已基于当前坐席的 `principalType`、`roles` 和 `operatorId` 控制领取、审批、接管、人工消息、内部备注按钮。
+- `smartcs-workbench` 已在服务端对坐席操作入口做角色兜底校验，非坐席角色返回 `1003 FORBIDDEN`，且标准用户身份不能回退到请求体 `operatorId`。
 - 当前仍是兼容模式：不强制登录、不校验 JWT 签名、不新增 Redis Session。
 
 ## 1. 当前问题
@@ -176,7 +177,7 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 5. 按权限控制按钮显隐和禁用态。
 6. 对 `401`、`403` 和登录过期做统一提示。
 
-当前已完成开发身份头、可选 Bearer Token、`GET /api/workbench/me` 接入、鉴权失败 / 权限不足错误文案归一化，以及坐席端按钮级权限控制；真实登录跳转和后端强权限校验留到后续收紧期。
+当前已完成开发身份头、可选 Bearer Token、`GET /api/workbench/me` 接入、鉴权失败 / 权限不足错误文案归一化、坐席端按钮级权限控制，以及 Workbench 后端角色兜底校验；真实登录跳转和生产 Token 校验留到后续收紧期。
 
 ## 8. API 兼容策略
 

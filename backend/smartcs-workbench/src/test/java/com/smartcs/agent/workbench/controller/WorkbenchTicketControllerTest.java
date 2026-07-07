@@ -1,11 +1,14 @@
 package com.smartcs.agent.workbench.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.smartcs.agent.common.auth.AuthHeaders;
+import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.workbench.auth.WorkbenchIdentityResolver;
@@ -16,6 +19,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.OperatorActionRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TakeoverMessageRequest;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
+import com.smartcs.agent.workbench.ticket.WorkbenchOperationException;
 import com.smartcs.agent.workbench.ticket.WorkbenchTicketService;
 import java.time.Instant;
 import java.util.List;
@@ -175,6 +179,37 @@ class WorkbenchTicketControllerTest {
         assertThat(response.code()).isEqualTo("0000");
         assertThat(response.data()).isSameAs(result);
         verify(ticketService).claim("wo_test", rewritten);
+    }
+
+    @Test
+    void claimRejectsDevOperatorWithoutWorkbenchRole() {
+        WorkbenchTicketService ticketService = mock(WorkbenchTicketService.class);
+        WorkbenchTicketController controller = newController(ticketService);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(AuthHeaders.DEV_OPERATOR_ID, "agent_header");
+        headers.add(AuthHeaders.ROLES, AuthRoles.CUSTOMER);
+        OperatorActionRequest request = new OperatorActionRequest("agent_body", "棰嗗彇宸ュ崟", Map.of());
+
+        assertThatThrownBy(() -> controller.claim("wo_test", headers, request))
+                .isInstanceOfSatisfying(WorkbenchOperationException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1003"));
+        verifyNoInteractions(ticketService);
+    }
+
+    @Test
+    void standardCustomerPrincipalCannotFallbackToLegacyOperatorBody() {
+        WorkbenchTicketService ticketService = mock(WorkbenchTicketService.class);
+        WorkbenchTicketController controller = newController(ticketService);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(AuthHeaders.PRINCIPAL_ID, "u1001");
+        headers.add(AuthHeaders.PRINCIPAL_TYPE, "CUSTOMER");
+        headers.add(AuthHeaders.ROLES, AuthRoles.CUSTOMER);
+        OperatorActionRequest request = new OperatorActionRequest("agent_body", "棰嗗彇宸ュ崟", Map.of());
+
+        assertThatThrownBy(() -> controller.claim("wo_test", headers, request))
+                .isInstanceOfSatisfying(WorkbenchOperationException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("1003"));
+        verifyNoInteractions(ticketService);
     }
 
     @Test
