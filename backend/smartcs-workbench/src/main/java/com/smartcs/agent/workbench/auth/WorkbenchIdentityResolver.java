@@ -4,9 +4,12 @@ import com.smartcs.agent.common.auth.AuthHeaders;
 import com.smartcs.agent.common.auth.AuthRoles;
 import com.smartcs.agent.common.auth.AuthSource;
 import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
+import com.smartcs.agent.common.auth.BearerTokenPrincipalParser;
+import com.smartcs.agent.common.auth.JwtAuthProperties;
 import com.smartcs.agent.common.auth.PrincipalType;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +21,23 @@ public class WorkbenchIdentityResolver {
 
     private static final String DEV_FALLBACK_OPERATOR_ID = "agent_001";
 
+    @Value("${smartcs.auth.jwt.enabled:false}")
+    private boolean jwtEnabled;
+
+    @Value("${smartcs.auth.jwt.secret:}")
+    private String jwtSecret;
+
+    @Value("${smartcs.auth.jwt.issuer:}")
+    private String jwtIssuer;
+
+    @Value("${smartcs.auth.jwt.audience:}")
+    private String jwtAudience;
+
     public AuthenticatedPrincipal resolveAgent(HttpHeaders headers, String legacyOperatorId) {
+        Optional<AuthenticatedPrincipal> bearerPrincipal = resolveBearerAgent(headers);
+        if (bearerPrincipal.isPresent()) {
+            return bearerPrincipal.get();
+        }
         Optional<AuthenticatedPrincipal> standardPrincipal = resolveStandardAgent(headers);
         if (standardPrincipal.isPresent()) {
             return standardPrincipal.get();
@@ -45,6 +64,23 @@ public class WorkbenchIdentityResolver {
                 AuthSource.DEV_FALLBACK);
     }
 
+    void configureJwtForTest(JwtAuthProperties properties) {
+        JwtAuthProperties safeProperties = properties == null ? JwtAuthProperties.disabled() : properties;
+        this.jwtEnabled = safeProperties.enabled();
+        this.jwtSecret = safeProperties.secret();
+        this.jwtIssuer = safeProperties.issuer();
+        this.jwtAudience = safeProperties.audience();
+    }
+
+    private Optional<AuthenticatedPrincipal> resolveBearerAgent(HttpHeaders headers) {
+        // Workbench Token 必须解析成坐席类身份，不能从请求体 operatorId 降级绕过。
+        return tokenParser().parse(
+                firstHeader(headers, AuthHeaders.AUTHORIZATION),
+                Set.of(PrincipalType.AGENT, PrincipalType.SUPERVISOR, PrincipalType.ADMIN),
+                null,
+                null);
+    }
+
     private Optional<AuthenticatedPrincipal> resolveStandardAgent(HttpHeaders headers) {
         String principalId = firstHeader(headers, AuthHeaders.PRINCIPAL_ID);
         Optional<PrincipalType> principalType = PrincipalType.parse(firstHeader(headers, AuthHeaders.PRINCIPAL_TYPE));
@@ -57,6 +93,10 @@ public class WorkbenchIdentityResolver {
                 rolesOr(headers, defaultRole(principalType.get())),
                 AuthenticatedPrincipal.parseCsv(firstHeader(headers, AuthHeaders.PERMISSIONS)),
                 AuthSource.STANDARD_HEADER));
+    }
+
+    private BearerTokenPrincipalParser tokenParser() {
+        return new BearerTokenPrincipalParser(new JwtAuthProperties(jwtEnabled, jwtSecret, jwtIssuer, jwtAudience));
     }
 
     private boolean isWorkbenchPrincipal(PrincipalType principalType) {

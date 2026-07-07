@@ -1,6 +1,7 @@
 package com.smartcs.agent.workbench.controller;
 
 import com.smartcs.agent.common.dto.ApiResponse;
+import com.smartcs.agent.common.auth.JwtPrincipalException;
 import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.workbench.ticket.WorkbenchOperationException;
@@ -17,6 +18,11 @@ public class WorkbenchExceptionHandler {
     @ExceptionHandler(WorkbenchOperationException.class)
     public ApiResponse<Void> handleWorkbenchOperationException(WorkbenchOperationException exception) {
         return ApiResponse.failure(exception.errorCode(), TraceIds.newTraceId());
+    }
+
+    @ExceptionHandler(JwtPrincipalException.class)
+    public ApiResponse<Void> handleJwtPrincipalException(JwtPrincipalException exception) {
+        return ApiResponse.failure(ErrorCode.UNAUTHORIZED, TraceIds.newTraceId());
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, IllegalArgumentException.class})

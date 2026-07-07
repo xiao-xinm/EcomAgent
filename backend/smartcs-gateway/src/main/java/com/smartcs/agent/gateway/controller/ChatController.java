@@ -10,6 +10,7 @@ import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.common.auth.AuthHeaders;
 import com.smartcs.agent.common.auth.AuthenticatedPrincipal;
+import com.smartcs.agent.common.auth.JwtPrincipalException;
 import com.smartcs.agent.gateway.auth.GatewayIdentityResolver;
 import jakarta.validation.Valid;
 import java.time.Duration;
@@ -81,7 +82,12 @@ public class ChatController {
     public Mono<ApiResponse<AgentReply>> sendMessage(
             @RequestHeader HttpHeaders headers,
             @Valid @RequestBody ChatRequest request) {
-        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, request.userId());
+        Optional<AuthenticatedPrincipal> principal;
+        try {
+            principal = identityResolver.resolveCustomer(headers, request.userId());
+        } catch (JwtPrincipalException exception) {
+            return unauthorizedResponse(requestTraceId(request.traceId()), exception);
+        }
         ChatRequest normalized = normalize(request, principal);
         LOGGER.info(
                 "Gateway收到聊天请求 traceId={} sessionId={} userId={} channel={} authSource={} contentLength={}",
@@ -119,7 +125,12 @@ public class ChatController {
     public Mono<ApiResponse<AgentReply>> handleAction(
             @RequestHeader HttpHeaders headers,
             @Valid @RequestBody ChatActionRequest request) {
-        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, request.userId());
+        Optional<AuthenticatedPrincipal> principal;
+        try {
+            principal = identityResolver.resolveCustomer(headers, request.userId());
+        } catch (JwtPrincipalException exception) {
+            return unauthorizedResponse(requestTraceId(request.traceId()), exception);
+        }
         ChatActionRequest normalized = normalizeAction(request, principal);
         LOGGER.info(
                 "Gateway收到聊天动作 traceId={} sessionId={} userId={} channel={} authSource={} actionType={} actionId={}",
@@ -157,7 +168,12 @@ public class ChatController {
             @RequestHeader HttpHeaders headers,
             @PathVariable String sessionId) {
         String traceId = TraceIds.newTraceId();
-        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, null);
+        Optional<AuthenticatedPrincipal> principal;
+        try {
+            principal = identityResolver.resolveCustomer(headers, null);
+        } catch (JwtPrincipalException exception) {
+            return unauthorizedResponse(traceId, exception);
+        }
         LOGGER.info(
                 "Gateway查询会话状态 traceId={} sessionId={} principalId={} authSource={}",
                 traceId,
@@ -189,7 +205,12 @@ public class ChatController {
             @RequestParam(defaultValue = "100") int limit) {
         String traceId = TraceIds.newTraceId();
         int normalizedLimit = normalizeLimit(limit);
-        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, null);
+        Optional<AuthenticatedPrincipal> principal;
+        try {
+            principal = identityResolver.resolveCustomer(headers, null);
+        } catch (JwtPrincipalException exception) {
+            return unauthorizedResponse(traceId, exception);
+        }
         LOGGER.info(
                 "Gateway查询会话消息 traceId={} sessionId={} principalId={} authSource={} limit={}",
                 traceId,
@@ -219,7 +240,12 @@ public class ChatController {
         String streamId = TraceIds.newTraceId();
         int normalizedLimit = normalizeLimit(limit);
         long normalizedIntervalMs = normalizeSseInterval(intervalMs);
-        Optional<AuthenticatedPrincipal> principal = identityResolver.resolveCustomer(headers, null);
+        Optional<AuthenticatedPrincipal> principal;
+        try {
+            principal = identityResolver.resolveCustomer(headers, null);
+        } catch (JwtPrincipalException exception) {
+            return unauthorizedStream(streamId, exception);
+        }
         Set<String> emittedMessageIds = ConcurrentHashMap.newKeySet();
         AtomicBoolean firstFetch = new AtomicBoolean(true);
         LOGGER.info(
@@ -276,6 +302,18 @@ public class ChatController {
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .retrieve()
                 .bodyToMono(CHAT_MESSAGES_TYPE);
+    }
+
+    private <T> Mono<ApiResponse<T>> unauthorizedResponse(String traceId, JwtPrincipalException exception) {
+        LOGGER.warn("Gateway拒绝无效Bearer Token traceId={} reason={}", traceId, exception.getMessage());
+        return Mono.just(ApiResponse.failure(ErrorCode.UNAUTHORIZED, traceId));
+    }
+
+    private Flux<ServerSentEvent<Object>> unauthorizedStream(String streamId, JwtPrincipalException exception) {
+        LOGGER.warn("Gateway拒绝无效SSE Bearer Token streamId={} reason={}", streamId, exception.getMessage());
+        return Flux.just(ServerSentEvent.builder((Object) ApiResponse.failure(ErrorCode.UNAUTHORIZED, streamId))
+                .event("auth.error")
+                .build());
     }
 
     private List<ChatMessageView> unseenMessages(
@@ -399,6 +437,10 @@ public class ChatController {
 
     private int contentLength(String content) {
         return content == null ? 0 : content.length();
+    }
+
+    private String requestTraceId(String traceId) {
+        return hasText(traceId) ? traceId : TraceIds.newTraceId();
     }
 
     private int normalizeLimit(int limit) {

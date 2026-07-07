@@ -262,7 +262,7 @@
 
 ### Phase 8. 登录鉴权与权限
 
-状态：方案设计中。
+状态：进行中，JWT 校验接入点已完成，真实登录跳转待做。
 
 目标：
 
@@ -289,7 +289,11 @@
 - 用户端 H5 和坐席工作台已完成 401 / 403 / 登录过期错误文案归一化。
 - 坐席工作台已基于 `principalType`、`roles` 和 `operatorId` 对领取、审批、接管、人工消息、内部备注做按钮级显隐和禁用控制。
 - Workbench 后端已对当前坐席身份做服务端角色兜底校验：非 `AGENT` / `SUPERVISOR` / `ADMIN` 角色不能执行领取、审批、接管、人工消息和内部备注操作。
-- 下一轮应评估生产 Token 校验接入点，并补真实登录跳转。
+- 已新增生产 Token / JWT 校验接入说明：`docs/auth-jwt-validation.md`。
+- `smartcs-common` 已新增无状态 Bearer JWT 解析器，支持 `sub`、`principal_type`、`roles`、`permissions`、`iss`、`aud`。
+- Gateway 已支持可配置 Bearer JWT 用户身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `userId`。
+- Workbench 已支持可配置 Bearer JWT 坐席身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `operatorId`，且用户 Token 不能回退成坐席身份。
+- 下一轮应补真实登录跳转、Token 获取/刷新策略和生产环境强制鉴权开关。
 
 中间件要求：
 

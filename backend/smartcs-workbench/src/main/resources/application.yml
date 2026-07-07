@@ -28,6 +28,12 @@ spring:
       enabled: false
 
 smartcs:
+  auth:
+    jwt:
+      enabled: ${SMARTCS_AUTH_JWT_ENABLED:false}
+      secret: ${SMARTCS_AUTH_JWT_SECRET:}
+      issuer: ${SMARTCS_AUTH_JWT_ISSUER:}
+      audience: ${SMARTCS_AUTH_JWT_AUDIENCE:}
   notification:
     enabled: ${SMARTCS_NOTIFICATION_ENABLED:true}
     base-url: ${SMARTCS_NOTIFICATION_BASE_URL:http://localhost:8085}

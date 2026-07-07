@@ -6,6 +6,7 @@ package com.smartcs.agent.common.auth;
 public enum AuthSource {
 
     STANDARD_HEADER,
+    BEARER_TOKEN,
     DEV_HEADER,
     LEGACY_BODY,
     DEV_FALLBACK

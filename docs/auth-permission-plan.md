@@ -15,7 +15,11 @@
 - `frontend/client-h5` 和 `frontend/workstation` 已对 `401`、`403`、`1002`、`1003` 做统一错误文案归一化。
 - `frontend/workstation` 已基于当前坐席的 `principalType`、`roles` 和 `operatorId` 控制领取、审批、接管、人工消息、内部备注按钮。
 - `smartcs-workbench` 已在服务端对坐席操作入口做角色兜底校验，非坐席角色返回 `1003 FORBIDDEN`，且标准用户身份不能回退到请求体 `operatorId`。
-- 当前仍是兼容模式：不强制登录、不校验 JWT 签名、不新增 Redis Session。
+- `smartcs-common` 已新增无状态 Bearer JWT 解析器，支持签名校验、issuer/audience 校验、角色解析和权限解析。
+- `smartcs-gateway` 已支持可配置 Bearer JWT 用户身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `userId`。
+- `smartcs-workbench` 已支持可配置 Bearer JWT 坐席身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `operatorId`，且用户 Token 不能回退成坐席身份。
+- 已新增 JWT 校验接入说明：`docs/auth-jwt-validation.md`。
+- 当前仍是兼容模式：不强制登录、不新增 Redis Session，真实登录跳转和 Token 获取/刷新留到后续收紧阶段。
 
 ## 1. 当前问题
 
