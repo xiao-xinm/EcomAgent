@@ -44,12 +44,13 @@ streamId=xxx sessionId=s_xxx userId=u1001
 - `smartcs-gateway` 聊天入口已使用统一字段片段覆盖：发送消息、快捷动作、会话状态查询、消息轮询、SSE 打开/关闭、跨用户会话拒绝和 Agent Core 转发结果。
 - `smartcs-agent-core` 入口和会话查询层已使用统一字段片段覆盖：聊天请求、动作请求、Agent 回复、动作回复、会话查询和消息查询。
 - `smartcs-skill-engine` 技能执行层已使用统一字段片段覆盖：执行开始、执行决策、电商领域查询/修改失败回退、执行日志落库成功和失败。
+- `smartcs-workbench` 工单服务层已使用统一字段片段覆盖：工单详情、操作日志查询、领取、审批、补充材料、转接管、人工接管开始/发送消息/结束、用户可见消息写入和审计写入。
 
 ## 5. 后续迁移顺序
 
 1. Agent Core：继续迁移编排深层日志，包括意图识别、风险路由、技能调用、工单创建，统一 `traceId/sessionId/userId/ticketId`。
 2. Skill Engine：继续迁移技能注册查询等非会话日志，并按需要补齐 `skillId/executionId`。
-3. Workbench：工单操作日志统一 `traceId/ticketId/userId/operatorId`。
+3. Workbench：继续迁移通知客户端、身份解析和异常处理等辅助日志。
 4. Notification：事件接收、投递结果和失败重试统一 `traceId/ticketId/userId`。
 5. 如后续接入 OpenTelemetry，再复用这些字段作为 span attributes。
 

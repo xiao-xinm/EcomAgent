@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.common.enums.ErrorCode;
+import com.smartcs.agent.common.observability.LogFields;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionLogView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ActionResult;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.ApprovalDecisionRequest;
@@ -177,12 +178,11 @@ public class WorkbenchTicketService {
     public TicketDetail getTicketDetail(String ticketId) {
         WorkOrderView ticket = requireTicket(ticketId);
         LOGGER.info(
-                "查询工单详情 ticketId={} traceId={} sessionId={} status={} routeDecision={}",
-                ticket.ticketId(),
-                ticket.traceId(),
-                ticket.sessionId(),
-                ticket.status(),
-                ticket.routeDecision());
+                "查询工单详情 {} sessionId={} status={} routeDecision={}",
+                ticketFields(ticket, null),
+                LogFields.value(ticket.sessionId()),
+                LogFields.value(ticket.status()),
+                LogFields.value(ticket.routeDecision()));
         return new TicketDetail(
                 ticket,
                 findApproval(ticketId).orElse(null),
@@ -192,7 +192,7 @@ public class WorkbenchTicketService {
     }
 
     public List<ActionLogView> listActions(String ticketId) {
-        requireTicket(ticketId);
+        WorkOrderView ticket = requireTicket(ticketId);
         List<ActionLogView> actions = jdbcTemplate.query(
                 """
                 SELECT
@@ -229,7 +229,7 @@ public class WorkbenchTicketService {
                 this::mapActionLog,
                 ticketId,
                 ticketId);
-        LOGGER.info("查询工单操作日志 ticketId={} count={}", ticketId, actions.size());
+        LOGGER.info("查询工单操作日志 {} count={}", ticketFields(ticket, null), actions.size());
         return actions;
     }
 
@@ -238,10 +238,8 @@ public class WorkbenchTicketService {
         WorkOrderView ticket = requireTicket(ticketId);
         String note = request.comment().trim();
         LOGGER.info(
-                "坐席添加内部备注 ticketId={} traceId={} operatorId={} commentLength={}",
-                ticketId,
-                ticket.traceId(),
-                request.operatorId(),
+                "坐席添加内部备注 {} commentLength={}",
+                ticketFields(ticket, request.operatorId()),
                 note.length());
 
         // 内部备注只写入坐席侧操作记录和审计日志，不回写用户会话消息，避免用户端误以为有新的客服回复。
@@ -263,11 +261,9 @@ public class WorkbenchTicketService {
         WorkOrderView ticket = requireTicket(ticketId);
         rejectTerminalWorkOrder(ticket.status());
         LOGGER.info(
-                "坐席领取工单开始 ticketId={} traceId={} operatorId={} beforeStatus={}",
-                ticketId,
-                ticket.traceId(),
-                request.operatorId(),
-                ticket.status());
+                "坐席领取工单开始 {} beforeStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(ticket.status()));
 
         String beforeStatus = ticket.status();
         int updated = jdbcTemplate.update(
@@ -300,13 +296,11 @@ public class WorkbenchTicketService {
         ApprovalTaskView approval = requireApproval(ticketId);
         requireOpenApproval(approval.status());
         LOGGER.info(
-                "审批通过开始 ticketId={} traceId={} approvalId={} operatorId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
-                ticketId,
-                ticket.traceId(),
-                approval.approvalId(),
-                request.operatorId(),
-                ticket.status(),
-                approval.status());
+                "审批通过开始 {} approvalId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(approval.approvalId()),
+                LogFields.value(ticket.status()),
+                LogFields.value(approval.status()));
 
         Map<String, Object> result = approvalConclusion(request, "APPROVED");
         jdbcTemplate.update(
@@ -362,13 +356,11 @@ public class WorkbenchTicketService {
         ApprovalTaskView approval = requireApproval(ticketId);
         requireOpenApproval(approval.status());
         LOGGER.info(
-                "审批驳回开始 ticketId={} traceId={} approvalId={} operatorId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
-                ticketId,
-                ticket.traceId(),
-                approval.approvalId(),
-                request.operatorId(),
-                ticket.status(),
-                approval.status());
+                "审批驳回开始 {} approvalId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(approval.approvalId()),
+                LogFields.value(ticket.status()),
+                LogFields.value(approval.status()));
 
         Map<String, Object> result = approvalConclusion(request, "REJECTED");
         jdbcTemplate.update(
@@ -424,12 +416,10 @@ public class WorkbenchTicketService {
         ApprovalTaskView approval = requireApproval(ticketId);
         requireOpenApproval(approval.status());
         LOGGER.info(
-                "审批要求补充材料 ticketId={} traceId={} approvalId={} operatorId={} beforeApprovalStatus={}",
-                ticketId,
-                ticket.traceId(),
-                approval.approvalId(),
-                request.operatorId(),
-                approval.status());
+                "审批要求补充材料 {} approvalId={} beforeApprovalStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(approval.approvalId()),
+                LogFields.value(approval.status()));
 
         Map<String, Object> result = approvalConclusion(request, "REQUEST_MATERIALS");
         jdbcTemplate.update(
@@ -471,13 +461,11 @@ public class WorkbenchTicketService {
         ApprovalTaskView approval = requireApproval(ticketId);
         requireOpenApproval(approval.status());
         LOGGER.info(
-                "审批转人工接管 ticketId={} traceId={} approvalId={} operatorId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
-                ticketId,
-                ticket.traceId(),
-                approval.approvalId(),
-                request.operatorId(),
-                ticket.status(),
-                approval.status());
+                "审批转人工接管 {} approvalId={} beforeWorkOrderStatus={} beforeApprovalStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(approval.approvalId()),
+                LogFields.value(ticket.status()),
+                LogFields.value(approval.status()));
 
         Map<String, Object> result = approvalConclusion(request, "TRANSFER_TAKEOVER");
         OperatorActionRequest takeoverRequest = new OperatorActionRequest(
@@ -547,13 +535,11 @@ public class WorkbenchTicketService {
                 .orElseGet(() -> createTakeover(ticket, request));
         rejectTerminalTakeover(takeover.status());
         LOGGER.info(
-                "人工接管开始 ticketId={} traceId={} takeoverId={} operatorId={} beforeWorkOrderStatus={} beforeTakeoverStatus={}",
-                ticketId,
-                ticket.traceId(),
-                takeover.takeoverId(),
-                request.operatorId(),
-                ticket.status(),
-                takeover.status());
+                "人工接管开始 {} takeoverId={} beforeWorkOrderStatus={} beforeTakeoverStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(takeover.takeoverId()),
+                LogFields.value(ticket.status()),
+                LogFields.value(takeover.status()));
 
         jdbcTemplate.update(
                 """
@@ -605,11 +591,9 @@ public class WorkbenchTicketService {
 
         String content = request.content().trim();
         LOGGER.info(
-                "坐席发送人工消息 ticketId={} traceId={} takeoverId={} operatorId={} contentLength={}",
-                ticketId,
-                ticket.traceId(),
-                takeover.takeoverId(),
-                request.operatorId(),
+                "坐席发送人工消息 {} takeoverId={} contentLength={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(takeover.takeoverId()),
                 content.length());
 
         Map<String, Object> messageData = data(
@@ -642,13 +626,11 @@ public class WorkbenchTicketService {
         String takeoverTarget = normalizeTakeoverTarget(request.resolutionStatus());
         String workOrderTarget = "RESOLVED".equals(takeoverTarget) ? "RESOLVED" : "CLOSED";
         LOGGER.info(
-                "人工接管结束开始 ticketId={} traceId={} takeoverId={} operatorId={} targetTakeoverStatus={} targetWorkOrderStatus={}",
-                ticketId,
-                ticket.traceId(),
-                takeover.takeoverId(),
-                request.operatorId(),
-                takeoverTarget,
-                workOrderTarget);
+                "人工接管结束开始 {} takeoverId={} targetTakeoverStatus={} targetWorkOrderStatus={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(takeover.takeoverId()),
+                LogFields.value(takeoverTarget),
+                LogFields.value(workOrderTarget));
         Map<String, Object> result = data(
                 "takeoverStatus", takeoverTarget,
                 "workOrderStatus", workOrderTarget,
@@ -885,11 +867,9 @@ public class WorkbenchTicketService {
                 textOr(request.comment(), "坐席主动接管"),
                 json(data("source", "workbench", "payload", request.payload())));
         LOGGER.info(
-                "坐席主动创建人工接管记录 ticketId={} traceId={} takeoverId={} operatorId={}",
-                ticket.ticketId(),
-                ticket.traceId(),
-                takeoverId,
-                request.operatorId());
+                "坐席主动创建人工接管记录 {} takeoverId={}",
+                ticketFields(ticket, request.operatorId()),
+                LogFields.value(takeoverId));
         return findTakeover(ticket.ticketId())
                 .orElseThrow(() -> rejected("人工接管记录创建失败"));
     }
@@ -979,13 +959,12 @@ public class WorkbenchTicketService {
                 ticket.routeDecision(),
                 json(metadata));
         LOGGER.info(
-                "写入用户可见坐席消息 ticketId={} traceId={} sessionId={} messageId={} role={} actionType={}",
-                ticket.ticketId(),
-                ticket.traceId(),
-                ticket.sessionId(),
-                messageId,
-                role,
-                actionType);
+                "写入用户可见坐席消息 {} sessionId={} messageId={} role={} actionType={}",
+                ticketFields(ticket, operatorId),
+                LogFields.value(ticket.sessionId()),
+                LogFields.value(messageId),
+                LogFields.value(role),
+                LogFields.value(actionType));
     }
 
     /**
@@ -1114,11 +1093,9 @@ public class WorkbenchTicketService {
                 json(eventData),
                 Timestamp.from(Instant.now()));
         LOGGER.debug(
-                "写入坐席审计日志 ticketId={} traceId={} operatorId={} eventType={}",
-                ticket.ticketId(),
-                ticket.traceId(),
-                operatorId,
-                eventType);
+                "写入坐席审计日志 {} eventType={}",
+                ticketFields(ticket, operatorId),
+                LogFields.value(eventType));
     }
 
     private void updateSessionState(String sessionId, String status, String dialogState) {
@@ -1148,13 +1125,16 @@ public class WorkbenchTicketService {
 
     private void logActionResult(String actionName, ActionResult result, String operatorId) {
         LOGGER.info(
-                "{} ticketId={} operatorId={} workOrderStatus={} approvalStatus={} takeoverStatus={}",
+                "{} {} workOrderStatus={} approvalStatus={} takeoverStatus={}",
                 actionName,
-                result.ticketId(),
-                operatorId,
-                result.workOrderStatus(),
-                result.approvalStatus(),
-                result.takeoverStatus());
+                LogFields.keyValues(LogFields.TICKET_ID, result.ticketId(), LogFields.OPERATOR_ID, operatorId),
+                LogFields.value(result.workOrderStatus()),
+                LogFields.value(result.approvalStatus()),
+                LogFields.value(result.takeoverStatus()));
+    }
+
+    private String ticketFields(WorkOrderView ticket, String operatorId) {
+        return LogFields.ticket(ticket.traceId(), ticket.ticketId(), ticket.userId(), operatorId);
     }
 
     private void rejectTerminalWorkOrder(String status) {
