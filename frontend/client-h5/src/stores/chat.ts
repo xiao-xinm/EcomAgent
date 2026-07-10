@@ -12,6 +12,7 @@ import type { ChatMessage } from '@/types/chat'
 import type { ChatRequest, ChatMessageView, QuickAction } from '@/types/api'
 import { ERROR_CODES } from '@/types/api'
 import { runtimeChatConfig } from '@/config/runtime'
+import { isSseAuthCompatible } from '@/auth/tokenProvider'
 
 const SESSION_STORAGE_KEY = runtimeChatConfig.sessionStorageKey
 const DEFAULT_USER_ID = runtimeChatConfig.userId
@@ -189,7 +190,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function startSse() {
-    if (!SSE_ENABLED || typeof EventSource === 'undefined') {
+    if (!SSE_ENABLED || !isSseAuthCompatible() || typeof EventSource === 'undefined') {
       startPollingTimer()
       return
     }

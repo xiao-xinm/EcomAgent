@@ -2,10 +2,15 @@ export interface RuntimeChatConfig {
   apiBaseUrl: string
   userId: string
   authToken?: string
+  authTokenStorageKey: string
+  authRequired: boolean
+  loginUrl?: string
+  loginRedirectEnabled: boolean
   userRoles: string
   channel: string
   pollingIntervalMs: number
   sseEnabled: boolean
+  sseAuthMode: 'none' | 'cookie'
   sessionStorageKey: string
 }
 
@@ -46,6 +51,10 @@ function booleanOr(value: unknown, fallback: boolean): boolean {
   return fallback
 }
 
+function sseAuthModeOr(value: unknown): RuntimeChatConfig['sseAuthMode'] {
+  return envText(value)?.toLowerCase() === 'cookie' ? 'cookie' : 'none'
+}
+
 const userId = queryText('userId', 'uid')
   || windowConfig.userId
   || envText(import.meta.env.VITE_USER_ID)
@@ -65,6 +74,9 @@ const channel = queryText('channel')
 const defaultSessionStorageKey = channel === 'h5'
   ? 'smartcs_session_id'
   : `smartcs_session_id_${channel}_${userId}`
+const defaultAuthTokenStorageKey = channel === 'h5'
+  ? 'smartcs_auth_token'
+  : `smartcs_auth_token_${channel}_${userId}`
 
 export const runtimeChatConfig: RuntimeChatConfig = {
   apiBaseUrl: queryText('apiBaseUrl')
@@ -73,6 +85,26 @@ export const runtimeChatConfig: RuntimeChatConfig = {
     || 'http://localhost:8080',
   userId,
   authToken,
+  authTokenStorageKey: queryText('authTokenStorageKey')
+    || windowConfig.authTokenStorageKey
+    || envText(import.meta.env.VITE_AUTH_TOKEN_STORAGE_KEY)
+    || defaultAuthTokenStorageKey,
+  authRequired: booleanOr(
+    queryText('authRequired')
+      || windowConfig.authRequired
+      || import.meta.env.VITE_AUTH_REQUIRED,
+    false,
+  ),
+  loginUrl: queryText('loginUrl')
+    || windowConfig.loginUrl
+    || envText(import.meta.env.VITE_LOGIN_URL)
+    || undefined,
+  loginRedirectEnabled: booleanOr(
+    queryText('loginRedirectEnabled')
+      || windowConfig.loginRedirectEnabled
+      || import.meta.env.VITE_LOGIN_REDIRECT_ENABLED,
+    true,
+  ),
   userRoles,
   channel,
   pollingIntervalMs: numberOr(
@@ -86,6 +118,11 @@ export const runtimeChatConfig: RuntimeChatConfig = {
       || windowConfig.sseEnabled
       || import.meta.env.VITE_CHAT_SSE_ENABLED,
     false,
+  ),
+  sseAuthMode: sseAuthModeOr(
+    queryText('sseAuthMode')
+      || windowConfig.sseAuthMode
+      || import.meta.env.VITE_CHAT_SSE_AUTH_MODE,
   ),
   sessionStorageKey: queryText('sessionKey', 'sessionStorageKey')
     || windowConfig.sessionStorageKey

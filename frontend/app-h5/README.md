@@ -20,4 +20,5 @@ npm run dev:app-h5
 - 用户身份默认使用 `VITE_USER_ID`，APP 容器可以通过 URL 参数 `userId` / `uid` 注入。
 - API 地址可以通过 URL 参数 `apiBaseUrl` 覆盖，便于 APP 容器按环境下发网关地址。
 - 会话本地缓存 key 默认按 `channel + userId` 生成，避免和普通 H5 入口混用会话；也可以用 `VITE_SESSION_STORAGE_KEY` 或 URL 参数 `sessionKey` 覆盖。
-- 当前阶段不接 APP 原生 Bridge，不做登录态鉴权；后续接 APP 容器时，可在 `window.__SMARTCS_CHAT_CONFIG__` 中注入同名运行时配置。
+- 当前阶段不强依赖 APP 原生 Bridge；接 APP 容器时，可以在 `window.__SMARTCS_CHAT_CONFIG__` 注入运行时配置，并通过 `window.__SMARTCS_AUTH__` 注入 `getAccessToken` / `refreshAccessToken` / `redirectToLogin`。
+- 严格鉴权环境建议设置 `VITE_AUTH_REQUIRED=true`。如果 SSE 不能走 Cookie 鉴权，保持 `VITE_CHAT_SSE_AUTH_MODE=none`，页面会继续使用短轮询。
