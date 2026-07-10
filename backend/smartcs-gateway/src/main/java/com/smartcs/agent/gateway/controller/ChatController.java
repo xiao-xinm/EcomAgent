@@ -100,6 +100,15 @@ public class ChatController {
                 normalized.channel(),
                 principal.map(value -> value.authSource().name()).orElse("NONE"),
                 contentLength(normalized.content()));
+        return rejectIfSessionOwnedByOther(normalized.sessionId(), normalized.traceId(), principal)
+                .flatMap(rejection -> rejection
+                        .map(Mono::just)
+                        .orElseGet(() -> forwardMessage(normalized, principal)));
+    }
+
+    private Mono<ApiResponse<AgentReply>> forwardMessage(
+            ChatRequest normalized,
+            Optional<AuthenticatedPrincipal> principal) {
         return agentCoreClient.post()
                 .uri("/api/agent/chat")
                 .header(REQUEST_ID_HEADER, normalized.traceId())
@@ -146,6 +155,15 @@ public class ChatController {
                 principal.map(value -> value.authSource().name()).orElse("NONE"),
                 normalized.actionType(),
                 normalized.actionId());
+        return rejectIfSessionOwnedByOther(normalized.sessionId(), normalized.traceId(), principal)
+                .flatMap(rejection -> rejection
+                        .map(Mono::just)
+                        .orElseGet(() -> forwardAction(normalized, principal)));
+    }
+
+    private Mono<ApiResponse<AgentReply>> forwardAction(
+            ChatActionRequest normalized,
+            Optional<AuthenticatedPrincipal> principal) {
         return agentCoreClient.post()
                 .uri("/api/agent/actions")
                 .header(REQUEST_ID_HEADER, normalized.traceId())
@@ -187,13 +205,8 @@ public class ChatController {
                 sessionId,
                 principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
                 principal.map(value -> value.authSource().name()).orElse("NONE"));
-        return agentCoreClient.get()
-                .uri("/api/agent/sessions/{sessionId}", sessionId)
-                .header(REQUEST_ID_HEADER, traceId)
-                .headers(outgoingHeaders -> applyIdentityHeaders(outgoingHeaders, principal))
-                .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
-                .retrieve()
-                .bodyToMono(CHAT_SESSION_TYPE)
+        return fetchSession(sessionId, traceId, principal)
+                .map(response -> authorizeSessionResponse(response, traceId, sessionId, principal))
                 .doOnNext(response -> LOGGER.info(
                         "Gateway完成会话状态查询 traceId={} sessionId={} code={}",
                         traceId,
@@ -227,7 +240,15 @@ public class ChatController {
                 principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
                 principal.map(value -> value.authSource().name()).orElse("NONE"),
                 normalizedLimit);
-        return fetchSessionMessages(sessionId, normalizedLimit, traceId, principal)
+        return fetchSession(sessionId, traceId, principal)
+                .map(response -> authorizeSessionResponse(response, traceId, sessionId, principal))
+                .flatMap(sessionResponse -> {
+                    if (!isSuccess(sessionResponse)) {
+                        return Mono.just(this.<List<ChatMessageView>>failureLike(sessionResponse, traceId));
+                    }
+                    return fetchSessionMessages(sessionId, normalizedLimit, traceId, principal)
+                            .map(response -> authorizeMessagesResponse(response, traceId, sessionId, principal));
+                })
                 .doOnNext(response -> LOGGER.info(
                         "Gateway完成会话消息查询 traceId={} sessionId={} code={}",
                         traceId,
@@ -257,6 +278,33 @@ public class ChatController {
         } catch (JwtPrincipalException exception) {
             return unauthorizedStream(streamId, exception);
         }
+        return fetchSession(sessionId, streamId, principal)
+                .map(response -> authorizeSessionResponse(response, streamId, sessionId, principal))
+                .flatMapMany(sessionResponse -> {
+                    if (!isSuccess(sessionResponse)) {
+                        return sessionFailureStream(streamId, sessionResponse);
+                    }
+                    return authorizedSessionEventStream(
+                            streamId,
+                            sessionId,
+                            lastMessageId,
+                            normalizedLimit,
+                            normalizedIntervalMs,
+                            principal);
+                })
+                .onErrorResume(error -> {
+                    LOGGER.warn("Gateway打开会话SSE前校验失败 streamId={} sessionId={}", streamId, sessionId, error);
+                    return sessionFailureStream(streamId, ApiResponse.failure(ErrorCode.INTERNAL_ERROR, streamId));
+                });
+    }
+
+    private Flux<ServerSentEvent<Object>> authorizedSessionEventStream(
+            String streamId,
+            String sessionId,
+            String lastMessageId,
+            int normalizedLimit,
+            long normalizedIntervalMs,
+            Optional<AuthenticatedPrincipal> principal) {
         Set<String> emittedMessageIds = ConcurrentHashMap.newKeySet();
         AtomicBoolean firstFetch = new AtomicBoolean(true);
         LOGGER.info(
@@ -271,12 +319,16 @@ public class ChatController {
 
         Flux<ServerSentEvent<Object>> messageEvents = Flux
                 .interval(Duration.ZERO, Duration.ofMillis(normalizedIntervalMs))
-                .concatMap(tick -> fetchSessionMessages(sessionId, normalizedLimit, TraceIds.newTraceId(), principal)
-                        .map(response -> unseenMessages(response, emittedMessageIds, lastMessageId, firstFetch))
-                        .onErrorResume(error -> {
-                            LOGGER.warn("Gateway SSE拉取消息失败 streamId={} sessionId={}", streamId, sessionId, error);
-                            return Mono.just(List.of());
-                        }))
+                .concatMap(tick -> {
+                    String fetchTraceId = TraceIds.newTraceId();
+                    return fetchSessionMessages(sessionId, normalizedLimit, fetchTraceId, principal)
+                            .map(response -> authorizeMessagesResponse(response, fetchTraceId, sessionId, principal))
+                            .map(response -> unseenMessages(response, emittedMessageIds, lastMessageId, firstFetch))
+                            .onErrorResume(error -> {
+                                LOGGER.warn("Gateway SSE拉取消息失败 streamId={} sessionId={}", streamId, sessionId, error);
+                                return Mono.just(List.of());
+                            });
+                })
                 .flatMapIterable(messages -> messages)
                 .map(message -> ServerSentEvent.builder((Object) message)
                         .id(message.messageId())
@@ -298,6 +350,19 @@ public class ChatController {
                         signal));
     }
 
+    private Mono<ApiResponse<ChatSessionView>> fetchSession(
+            String sessionId,
+            String traceId,
+            Optional<AuthenticatedPrincipal> principal) {
+        return agentCoreClient.get()
+                .uri("/api/agent/sessions/{sessionId}", sessionId)
+                .header(REQUEST_ID_HEADER, traceId)
+                .headers(outgoingHeaders -> applyIdentityHeaders(outgoingHeaders, principal))
+                .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
+                .retrieve()
+                .bodyToMono(CHAT_SESSION_TYPE);
+    }
+
     private Mono<ApiResponse<List<ChatMessageView>>> fetchSessionMessages(
             String sessionId,
             int limit,
@@ -313,6 +378,105 @@ public class ChatController {
                 .accept(MediaType.parseMediaType(APPLICATION_JSON_UTF8))
                 .retrieve()
                 .bodyToMono(CHAT_MESSAGES_TYPE);
+    }
+
+    private Mono<Optional<ApiResponse<AgentReply>>> rejectIfSessionOwnedByOther(
+            String sessionId,
+            String traceId,
+            Optional<AuthenticatedPrincipal> principal) {
+        if (principal.isEmpty() || !hasText(sessionId)) {
+            return Mono.just(Optional.empty());
+        }
+        return fetchSession(sessionId, traceId, principal)
+                .map(response -> {
+                    if (ErrorCode.NOT_FOUND.code().equals(response.code())) {
+                        return Optional.<ApiResponse<AgentReply>>empty();
+                    }
+                    ApiResponse<ChatSessionView> authorized =
+                            authorizeSessionResponse(response, traceId, sessionId, principal);
+                    if (isSuccess(authorized)) {
+                        return Optional.<ApiResponse<AgentReply>>empty();
+                    }
+                    return Optional.of(this.<AgentReply>failureLike(authorized, traceId));
+                })
+                .onErrorResume(error -> {
+                    LOGGER.warn(
+                            "Gateway会话归属预检失败，拒绝继续转发 traceId={} sessionId={}",
+                            traceId,
+                            sessionId,
+                            error);
+                    return Mono.just(Optional.of(ApiResponse.failure(ErrorCode.INTERNAL_ERROR, traceId)));
+                });
+    }
+
+    private ApiResponse<ChatSessionView> authorizeSessionResponse(
+            ApiResponse<ChatSessionView> response,
+            String traceId,
+            String sessionId,
+            Optional<AuthenticatedPrincipal> principal) {
+        if (!isSuccess(response) || response.data() == null || principal.isEmpty()) {
+            return response;
+        }
+        AuthenticatedPrincipal authenticatedPrincipal = principal.get();
+        if (authenticatedPrincipal.principalId().equals(response.data().userId())) {
+            return response;
+        }
+        LOGGER.warn(
+                "Gateway拒绝跨用户会话访问 traceId={} sessionId={} principalId={} sessionUserId={}",
+                traceId,
+                sessionId,
+                authenticatedPrincipal.principalId(),
+                response.data().userId());
+        return ApiResponse.failure(ErrorCode.FORBIDDEN, traceId);
+    }
+
+    private ApiResponse<List<ChatMessageView>> authorizeMessagesResponse(
+            ApiResponse<List<ChatMessageView>> response,
+            String traceId,
+            String sessionId,
+            Optional<AuthenticatedPrincipal> principal) {
+        if (!isSuccess(response) || response.data() == null || principal.isEmpty()) {
+            return response;
+        }
+        String principalId = principal.get().principalId();
+        boolean hasOtherUserMessage = response.data().stream()
+                .anyMatch(message -> !principalId.equals(message.userId()));
+        if (!hasOtherUserMessage) {
+            return response;
+        }
+        LOGGER.warn(
+                "Gateway拒绝跨用户会话消息访问 traceId={} sessionId={} principalId={}",
+                traceId,
+                sessionId,
+                principalId);
+        return ApiResponse.failure(ErrorCode.FORBIDDEN, traceId);
+    }
+
+    private <T> ApiResponse<T> failureLike(ApiResponse<?> response, String traceId) {
+        return new ApiResponse<>(
+                response.code(),
+                response.message(),
+                null,
+                traceId,
+                Map.of(),
+                Instant.now());
+    }
+
+    private Flux<ServerSentEvent<Object>> sessionFailureStream(String streamId, ApiResponse<?> response) {
+        String eventName = isAuthFailure(response) ? "auth.error" : "session.error";
+        return Flux.just(ServerSentEvent.builder((Object) failureLike(response, streamId))
+                .event(eventName)
+                .build());
+    }
+
+    private boolean isSuccess(ApiResponse<?> response) {
+        return response != null && ErrorCode.SUCCESS.code().equals(response.code());
+    }
+
+    private boolean isAuthFailure(ApiResponse<?> response) {
+        return response != null
+                && (ErrorCode.UNAUTHORIZED.code().equals(response.code())
+                || ErrorCode.FORBIDDEN.code().equals(response.code()));
     }
 
     private <T> Mono<ApiResponse<T>> unauthorizedResponse(String traceId, JwtPrincipalException exception) {

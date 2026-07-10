@@ -37,9 +37,9 @@
 | `smartcs-workbench` | 已具备工单列表、详情、领取、审批、人工接管、消息回写 |
 | `smartcs-knowledge` | 已具备 FAQ 关键词匹配最小链路 |
 | `smartcs-notification` | 已具备通知事件最小接收和记录链路 |
-| `frontend/client-h5` | 已具备聊天、短轮询、快捷动作、地址确认表单、状态展示 |
-| `frontend/app-h5` | 已具备复用用户端聊天能力的 APP 内嵌入口 |
-| `frontend/workstation` | 已具备坐席工作台最小闭环 |
+| `frontend/client-h5` | 已具备聊天、短轮询、快捷动作、地址确认表单、状态展示和 Token Provider 骨架 |
+| `frontend/app-h5` | 已具备复用用户端聊天能力的 APP 内嵌入口和 Token Provider 骨架 |
+| `frontend/workstation` | 已具备坐席工作台最小闭环和 Token Provider 骨架 |
 | `docs/e2e-acceptance-checklist.md` | 已沉淀最小闭环验收清单 |
 
 当前仍保持轻量本地架构：
@@ -262,7 +262,7 @@
 
 ### Phase 8. 登录鉴权与权限
 
-状态：进行中，JWT 校验接入点已完成，真实登录跳转待做。
+状态：进行中，JWT 校验、前端 Token Provider 骨架和用户会话归属校验已完成，真实账号中心接入待做。
 
 目标：
 
@@ -295,7 +295,10 @@
 - Workbench 已支持可配置 Bearer JWT 坐席身份解析，默认关闭，启用后 Token 优先于标准身份头、开发头和旧请求体 `operatorId`，且用户 Token 不能回退成坐席身份。
 - Gateway / Workbench 已新增 `smartcs.auth.strict-enabled` 强制鉴权开关，默认关闭；开启后不再使用开发头、旧请求体身份和 Workbench 本地坐席兜底。
 - Workbench 工单列表、统计、详情和操作日志读取接口已统一经过坐席身份校验。
-- 下一轮应补真实登录跳转、Token 获取/刷新策略，以及用户会话归属校验。
+- 用户端 H5 / APP H5 已新增 Token Provider 骨架，支持宿主注入 `getAccessToken` / `refreshAccessToken` / `redirectToLogin`。
+- 坐席工作台已新增 Token Provider 骨架，支持后台门户或统一登录壳注入 Token 获取、刷新和登录跳转。
+- Gateway 已新增用户会话归属校验：发送消息、快捷动作、会话状态查询、消息轮询和 SSE 订阅都会拒绝跨用户访问已有会话。
+- 下一轮可继续对接真实账号中心 / 登录页，或进入 Phase 9 补齐启动、健康检查和部署说明。
 
 中间件要求：
 

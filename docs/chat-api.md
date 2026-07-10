@@ -52,7 +52,9 @@ X-SmartCS-Auth-Source: DEV_HEADER | LEGACY_BODY | STANDARD_HEADER
 - 请求头 `X-SmartCS-Principal-Id` + `X-SmartCS-Principal-Type=CUSTOMER` 优先级最高。
 - 其次使用开发头 `X-SmartCS-User-Id`。
 - 如果没有身份头，继续使用请求体 `userId`，并标记为 `LEGACY_BODY`。
-- 本阶段不强制鉴权，不校验 JWT 签名，不引入 Redis Session。
+- 本阶段默认不强制鉴权，不引入 Redis Session；可通过 `smartcs.auth.jwt.enabled=true` 启用 Bearer JWT 解析，通过 `smartcs.auth.strict-enabled=true` 收紧为强制鉴权。
+- Gateway 解析到可信用户身份后，会校验聊天会话归属。发送消息、快捷动作、查询会话、查询消息和 SSE 订阅都只能访问当前用户自己的 `sessionId`。
+- 如果 `sessionId` 已存在且 `cs_session.user_id` 与当前可信用户不同，Gateway 返回 `1003 / forbidden`；SSE 返回 `auth.error` 事件，`data.code = 1003`。
 - 浏览器 `EventSource` 不能附加自定义 Header，SSE 当前仍用于兼容期增量唤醒；强制鉴权前需单独确认 Cookie 或 query token 策略。
 - H5 已将 `401` / `1002` 映射为“登录已过期”，将 `403` / `1003` 映射为“无权访问该会话”。
 
@@ -91,6 +93,7 @@ interface ChatRequest {
 - `traceId` 不传时由 Gateway 生成。
 - `sessionId` 不传时由 Gateway 生成。
 - 返回的 `data.sessionId` 需要前端保存，后续快捷动作必须继续传这个 `sessionId`。
+- 如果传入的 `sessionId` 已属于其他用户，且请求携带了可信身份头或 Bearer Token，响应 `code = 1003`，不会转发到 Agent Core 写入消息。
 
 ## 2. 处理快捷动作
 
@@ -116,6 +119,8 @@ interface ChatActionRequest {
   metadata?: Record<string, unknown>;
 }
 ```
+
+如果 `sessionId` 属于其他用户，且请求携带了可信身份头或 Bearer Token，响应 `code = 1003`，不会继续执行确认、取消或转人工动作。
 
 确认继续示例：
 
@@ -232,6 +237,8 @@ GET /api/chat/sessions/{sessionId}
 
 用于用户端 H5 刷新或轮询当前会话状态。人工审核、人工接管、坐席处理完成后，前端可以通过该接口拿到最新状态。
 
+当请求携带可信身份时，仅允许查询当前用户自己的会话；跨用户查询返回 `code = 1003`。
+
 响应：
 
 ```ts
@@ -282,6 +289,8 @@ GET /api/chat/sessions/{sessionId}/messages?limit=100
 用于用户端 H5 拉取当前会话消息列表。`limit` 可选，默认 `100`，最大 `200`。
 
 消息列表会包含同一会话下的所有用户可见消息，包括 `USER`、`AGENT`、`SYSTEM` 和 `HUMAN_AGENT`。当坐席在 Workbench 完成审批通过、审批驳回、人工接入、发送人工消息或人工处理结束时，后端会追加一条 `SYSTEM` 或 `HUMAN_AGENT` 消息，H5 通过本接口刷新即可看到人工处理进度和结果。
+
+当请求携带可信身份时，Gateway 会先查询会话归属；跨用户查询直接返回 `code = 1003`，不会继续拉取消息列表。
 
 当前阶段仍以本接口短轮询作为稳定基线。实时消息升级方案见 [realtime-messaging-evaluation.md](./realtime-messaging-evaluation.md)。
 
@@ -338,6 +347,8 @@ Accept: text/event-stream
 
 - `message.created`：有新的用户可见消息，`data` 为 `ChatMessageView`。
 - `heartbeat`：连接保活，`data` 包含 `sessionId` 和 `timestamp`。
+- `auth.error`：未登录、无效 Token 或会话不属于当前用户，`data` 为 `ApiResponse`。
+- `session.error`：会话不存在或服务端查询异常，`data` 为 `ApiResponse`。
 
 查询参数：
 

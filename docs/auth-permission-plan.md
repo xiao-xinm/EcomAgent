@@ -23,7 +23,10 @@
 - 强制鉴权开启后，请求体身份与可信身份冲突会返回 `1003 FORBIDDEN`。
 - Workbench 工单列表、统计、详情和操作日志读取接口已统一经过坐席身份校验。
 - 已新增 JWT 校验接入说明：`docs/auth-jwt-validation.md`。
-- 当前默认仍是兼容模式：不新增 Redis Session，真实登录跳转和 Token 获取/刷新留到后续收紧阶段。
+- `frontend/client-h5` / `frontend/app-h5` 已新增 `window.__SMARTCS_AUTH__` Token Provider，支持 Token 获取、刷新一次重试和登录跳转兜底。
+- `frontend/workstation` 已新增 `window.__SMARTCS_WORKSTATION_AUTH__` Token Provider，支持坐席端 Token 获取、刷新一次重试和登录跳转兜底。
+- `smartcs-gateway` 已对用户聊天会话增加归属校验：发送消息、快捷动作、会话状态查询、消息轮询和 SSE 订阅在解析到可信用户身份后，都会拒绝访问其他用户的会话。
+- 当前默认仍是兼容模式：不新增 Redis Session，真实账号中心和真实登录页面接入留到后续收紧阶段。
 
 ## 1. 当前问题
 
@@ -150,6 +153,7 @@ X-SmartCS-Roles: CUSTOMER,AGENT
    - 开启强校验时，若请求体 `userId` 与可信身份不同，返回无权限。
 4. 向 Agent Core 透传标准身份头，减少下游重复解析。
 5. 会话状态、消息轮询和 SSE 查询增加会话归属校验。
+6. 发送消息和快捷动作在转发 Agent Core 前，对已有会话做归属预检，避免用户借用其他人的 `sessionId` 写入消息或触发操作。
 
 ### 6.3 Workbench
 
@@ -185,7 +189,7 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 5. 按权限控制按钮显隐和禁用态。
 6. 对 `401`、`403` 和登录过期做统一提示。
 
-当前已完成开发身份头、可选 Bearer Token、`GET /api/workbench/me` 接入、鉴权失败 / 权限不足错误文案归一化、坐席端按钮级权限控制，以及 Workbench 后端角色兜底校验；真实登录跳转和生产 Token 校验留到后续收紧期。
+当前已完成开发身份头、可选 Bearer Token、`GET /api/workbench/me` 接入、鉴权失败 / 权限不足错误文案归一化、坐席端按钮级权限控制、Workbench 后端角色兜底校验，以及前端 Token Provider / 登录跳转骨架；真实账号中心和真实登录页面留到后续收紧期。
 
 ## 8. API 兼容策略
 
@@ -200,7 +204,8 @@ X-SmartCS-Roles: CUSTOMER,AGENT
 2. **兼容期 B：可信身份优先**
    - 后端以可信身份覆盖请求体身份。
    - 请求体身份不一致时记录安全日志。
-   - 前端开始从 Token / 当前用户接口获取身份。
+   - 前端开始从 Token Provider / 当前用户接口获取身份。
+   - Gateway 对已有聊天会话执行用户归属校验，跨用户访问返回 `1003 FORBIDDEN`。
 
 3. **收紧期 C：强制鉴权**
    - 生产环境通过 `smartcs.auth.strict-enabled=true` 开启强制鉴权。
