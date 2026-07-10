@@ -316,7 +316,7 @@
 建议任务顺序：
 
 1. 完善启动文档和端口清单。（已完成基础覆盖）
-2. 统一日志字段：`traceId`、`sessionId`、`ticketId`、`userId`。
+2. 统一日志字段：`traceId`、`sessionId`、`ticketId`、`userId`。（Gateway 聊天入口已完成基础覆盖）
 3. 增加基础健康检查和依赖检查。（已完成基础覆盖）
 4. 补齐 Docker Compose。
 5. 再考虑 K8s、监控、告警和链路追踪。
@@ -325,6 +325,8 @@
 
 - 已新增 `scripts/check-local-stack.ps1`，覆盖 Gateway、Agent Core、Skill Engine、Workbench、Knowledge、Notification 和三端前端入口健康检查。
 - 已新增 `scripts/smoke-e2e.ps1`，覆盖 FAQ、查订单、查物流、取消订单确认、退款人工审核入口、人工接管入口和用户会话归属保护。
+- 已新增日志字段规范文档：`docs/observability-log-fields.md`。
+- `smartcs-common` 已新增 `LogFields` 公共字段工具，Gateway 聊天入口已使用统一 `traceId/sessionId/userId/streamId` 日志片段。
 
 中间件要求：
 

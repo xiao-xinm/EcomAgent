@@ -7,6 +7,7 @@ import com.smartcs.agent.common.domain.ChatRequest;
 import com.smartcs.agent.common.domain.ChatSessionView;
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.enums.ErrorCode;
+import com.smartcs.agent.common.observability.LogFields;
 import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.common.auth.AuthHeaders;
 import com.smartcs.agent.common.auth.AuthPrincipalException;
@@ -93,12 +94,10 @@ public class ChatController {
         }
         ChatRequest normalized = normalize(request, principal);
         LOGGER.info(
-                "Gateway收到聊天请求 traceId={} sessionId={} userId={} channel={} authSource={} contentLength={}",
-                normalized.traceId(),
-                normalized.sessionId(),
-                normalized.userId(),
+                "Gateway收到聊天请求 {} channel={} authSource={} contentLength={}",
+                LogFields.chat(normalized.traceId(), normalized.sessionId(), normalized.userId()),
                 normalized.channel(),
-                principal.map(value -> value.authSource().name()).orElse("NONE"),
+                authSource(principal),
                 contentLength(normalized.content()));
         return rejectIfSessionOwnedByOther(normalized.sessionId(), normalized.traceId(), principal)
                 .flatMap(rejection -> rejection
@@ -121,10 +120,8 @@ public class ChatController {
                 .doOnNext(response -> logAgentCoreResponse(normalized, response))
                 .onErrorResume(error -> {
                     LOGGER.warn(
-                            "Gateway转发Agent Core失败 traceId={} sessionId={} userId={}",
-                            normalized.traceId(),
-                            normalized.sessionId(),
-                            normalized.userId(),
+                            "Gateway转发Agent Core失败 {}",
+                            LogFields.chat(normalized.traceId(), normalized.sessionId(), normalized.userId()),
                             error);
                     return Mono.just(ApiResponse.failure(ErrorCode.INTERNAL_ERROR, normalized.traceId()));
                 });
@@ -147,12 +144,10 @@ public class ChatController {
         }
         ChatActionRequest normalized = normalizeAction(request, principal);
         LOGGER.info(
-                "Gateway收到聊天动作 traceId={} sessionId={} userId={} channel={} authSource={} actionType={} actionId={}",
-                normalized.traceId(),
-                normalized.sessionId(),
-                normalized.userId(),
+                "Gateway收到聊天动作 {} channel={} authSource={} actionType={} actionId={}",
+                LogFields.chat(normalized.traceId(), normalized.sessionId(), normalized.userId()),
                 normalized.channel(),
-                principal.map(value -> value.authSource().name()).orElse("NONE"),
+                authSource(principal),
                 normalized.actionType(),
                 normalized.actionId());
         return rejectIfSessionOwnedByOther(normalized.sessionId(), normalized.traceId(), principal)
@@ -176,10 +171,8 @@ public class ChatController {
                 .doOnNext(response -> logAgentCoreActionResponse(normalized, response))
                 .onErrorResume(error -> {
                     LOGGER.warn(
-                            "Gateway转发聊天动作失败 traceId={} sessionId={} userId={} actionType={}",
-                            normalized.traceId(),
-                            normalized.sessionId(),
-                            normalized.userId(),
+                            "Gateway转发聊天动作失败 {} actionType={}",
+                            LogFields.chat(normalized.traceId(), normalized.sessionId(), normalized.userId()),
                             normalized.actionType(),
                             error);
                     return Mono.just(ApiResponse.failure(ErrorCode.INTERNAL_ERROR, normalized.traceId()));
@@ -200,20 +193,17 @@ public class ChatController {
             return unauthorizedResponse(traceId, exception);
         }
         LOGGER.info(
-                "Gateway查询会话状态 traceId={} sessionId={} principalId={} authSource={}",
-                traceId,
-                sessionId,
-                principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
-                principal.map(value -> value.authSource().name()).orElse("NONE"));
+                "Gateway查询会话状态 {} authSource={}",
+                LogFields.chat(traceId, sessionId, principalId(principal)),
+                authSource(principal));
         return fetchSession(sessionId, traceId, principal)
                 .map(response -> authorizeSessionResponse(response, traceId, sessionId, principal))
                 .doOnNext(response -> LOGGER.info(
-                        "Gateway完成会话状态查询 traceId={} sessionId={} code={}",
-                        traceId,
-                        sessionId,
+                        "Gateway完成会话状态查询 {} code={}",
+                        LogFields.chat(traceId, sessionId, principalId(principal)),
                         response.code()))
                 .onErrorResume(error -> {
-                    LOGGER.warn("Gateway查询会话状态失败 traceId={} sessionId={}", traceId, sessionId, error);
+                    LOGGER.warn("Gateway查询会话状态失败 {}", LogFields.chat(traceId, sessionId, principalId(principal)), error);
                     return Mono.just(ApiResponse.<ChatSessionView>failure(ErrorCode.INTERNAL_ERROR, traceId));
                 });
     }
@@ -234,11 +224,9 @@ public class ChatController {
             return unauthorizedResponse(traceId, exception);
         }
         LOGGER.info(
-                "Gateway查询会话消息 traceId={} sessionId={} principalId={} authSource={} limit={}",
-                traceId,
-                sessionId,
-                principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
-                principal.map(value -> value.authSource().name()).orElse("NONE"),
+                "Gateway查询会话消息 {} authSource={} limit={}",
+                LogFields.chat(traceId, sessionId, principalId(principal)),
+                authSource(principal),
                 normalizedLimit);
         return fetchSession(sessionId, traceId, principal)
                 .map(response -> authorizeSessionResponse(response, traceId, sessionId, principal))
@@ -250,12 +238,11 @@ public class ChatController {
                             .map(response -> authorizeMessagesResponse(response, traceId, sessionId, principal));
                 })
                 .doOnNext(response -> LOGGER.info(
-                        "Gateway完成会话消息查询 traceId={} sessionId={} code={}",
-                        traceId,
-                        sessionId,
+                        "Gateway完成会话消息查询 {} code={}",
+                        LogFields.chat(traceId, sessionId, principalId(principal)),
                         response.code()))
                 .onErrorResume(error -> {
-                    LOGGER.warn("Gateway查询会话消息失败 traceId={} sessionId={}", traceId, sessionId, error);
+                    LOGGER.warn("Gateway查询会话消息失败 {}", LogFields.chat(traceId, sessionId, principalId(principal)), error);
                     return Mono.just(ApiResponse.<List<ChatMessageView>>failure(ErrorCode.INTERNAL_ERROR, traceId));
                 });
     }
@@ -293,7 +280,10 @@ public class ChatController {
                             principal);
                 })
                 .onErrorResume(error -> {
-                    LOGGER.warn("Gateway打开会话SSE前校验失败 streamId={} sessionId={}", streamId, sessionId, error);
+                    LOGGER.warn(
+                            "Gateway打开会话SSE前校验失败 {}",
+                            LogFields.stream(streamId, sessionId, principalId(principal)),
+                            error);
                     return sessionFailureStream(streamId, ApiResponse.failure(ErrorCode.INTERNAL_ERROR, streamId));
                 });
     }
@@ -308,11 +298,9 @@ public class ChatController {
         Set<String> emittedMessageIds = ConcurrentHashMap.newKeySet();
         AtomicBoolean firstFetch = new AtomicBoolean(true);
         LOGGER.info(
-                "Gateway打开会话SSE streamId={} sessionId={} principalId={} authSource={} lastMessageId={} limit={} intervalMs={}",
-                streamId,
-                sessionId,
-                principal.map(AuthenticatedPrincipal::principalId).orElse("NONE"),
-                principal.map(value -> value.authSource().name()).orElse("NONE"),
+                "Gateway打开会话SSE {} authSource={} lastMessageId={} limit={} intervalMs={}",
+                LogFields.stream(streamId, sessionId, principalId(principal)),
+                authSource(principal),
                 lastMessageId,
                 normalizedLimit,
                 normalizedIntervalMs);
@@ -325,7 +313,10 @@ public class ChatController {
                             .map(response -> authorizeMessagesResponse(response, fetchTraceId, sessionId, principal))
                             .map(response -> unseenMessages(response, emittedMessageIds, lastMessageId, firstFetch))
                             .onErrorResume(error -> {
-                                LOGGER.warn("Gateway SSE拉取消息失败 streamId={} sessionId={}", streamId, sessionId, error);
+                                LOGGER.warn(
+                                        "Gateway SSE拉取消息失败 {}",
+                                        LogFields.stream(streamId, sessionId, principalId(principal)),
+                                        error);
                                 return Mono.just(List.of());
                             });
                 })
@@ -344,9 +335,8 @@ public class ChatController {
 
         return Flux.merge(messageEvents, heartbeatEvents)
                 .doFinally(signal -> LOGGER.info(
-                        "Gateway关闭会话SSE streamId={} sessionId={} signal={}",
-                        streamId,
-                        sessionId,
+                        "Gateway关闭会话SSE {} signal={}",
+                        LogFields.stream(streamId, sessionId, principalId(principal)),
                         signal));
     }
 
@@ -401,9 +391,8 @@ public class ChatController {
                 })
                 .onErrorResume(error -> {
                     LOGGER.warn(
-                            "Gateway会话归属预检失败，拒绝继续转发 traceId={} sessionId={}",
-                            traceId,
-                            sessionId,
+                            "Gateway会话归属预检失败，拒绝继续转发 {}",
+                            LogFields.chat(traceId, sessionId, principalId(principal)),
                             error);
                     return Mono.just(Optional.of(ApiResponse.failure(ErrorCode.INTERNAL_ERROR, traceId)));
                 });
@@ -422,10 +411,8 @@ public class ChatController {
             return response;
         }
         LOGGER.warn(
-                "Gateway拒绝跨用户会话访问 traceId={} sessionId={} principalId={} sessionUserId={}",
-                traceId,
-                sessionId,
-                authenticatedPrincipal.principalId(),
+                "Gateway拒绝跨用户会话访问 {} sessionUserId={}",
+                LogFields.chat(traceId, sessionId, authenticatedPrincipal.principalId()),
                 response.data().userId());
         return ApiResponse.failure(ErrorCode.FORBIDDEN, traceId);
     }
@@ -445,10 +432,8 @@ public class ChatController {
             return response;
         }
         LOGGER.warn(
-                "Gateway拒绝跨用户会话消息访问 traceId={} sessionId={} principalId={}",
-                traceId,
-                sessionId,
-                principalId);
+                "Gateway拒绝跨用户会话消息访问 {}",
+                LogFields.chat(traceId, sessionId, principalId));
         return ApiResponse.failure(ErrorCode.FORBIDDEN, traceId);
     }
 
@@ -480,21 +465,27 @@ public class ChatController {
     }
 
     private <T> Mono<ApiResponse<T>> unauthorizedResponse(String traceId, JwtPrincipalException exception) {
-        LOGGER.warn("Gateway拒绝无效Bearer Token traceId={} reason={}", traceId, exception.getMessage());
+        LOGGER.warn(
+                "Gateway拒绝无效Bearer Token {} reason={}",
+                LogFields.keyValues(LogFields.TRACE_ID, traceId),
+                exception.getMessage());
         return Mono.just(ApiResponse.failure(ErrorCode.UNAUTHORIZED, traceId));
     }
 
     private <T> Mono<ApiResponse<T>> authFailureResponse(String traceId, AuthPrincipalException exception) {
         LOGGER.warn(
-                "Gateway拒绝未授权身份 traceId={} code={} reason={}",
-                traceId,
+                "Gateway拒绝未授权身份 {} code={} reason={}",
+                LogFields.keyValues(LogFields.TRACE_ID, traceId),
                 exception.errorCode().code(),
                 exception.getMessage());
         return Mono.just(ApiResponse.failure(exception.errorCode(), traceId));
     }
 
     private Flux<ServerSentEvent<Object>> unauthorizedStream(String streamId, JwtPrincipalException exception) {
-        LOGGER.warn("Gateway拒绝无效SSE Bearer Token streamId={} reason={}", streamId, exception.getMessage());
+        LOGGER.warn(
+                "Gateway拒绝无效SSE Bearer Token {} reason={}",
+                LogFields.keyValues(LogFields.STREAM_ID, streamId),
+                exception.getMessage());
         return Flux.just(ServerSentEvent.builder((Object) ApiResponse.failure(ErrorCode.UNAUTHORIZED, streamId))
                 .event("auth.error")
                 .build());
@@ -502,8 +493,8 @@ public class ChatController {
 
     private Flux<ServerSentEvent<Object>> authFailureStream(String streamId, AuthPrincipalException exception) {
         LOGGER.warn(
-                "Gateway拒绝SSE未授权身份 streamId={} code={} reason={}",
-                streamId,
+                "Gateway拒绝SSE未授权身份 {} code={} reason={}",
+                LogFields.keyValues(LogFields.STREAM_ID, streamId),
                 exception.errorCode().code(),
                 exception.getMessage());
         return Flux.just(ServerSentEvent.builder((Object) ApiResponse.failure(exception.errorCode(), streamId))
@@ -592,38 +583,34 @@ public class ChatController {
         AgentReply reply = response.data();
         if (reply == null) {
             LOGGER.warn(
-                    "Gateway收到Agent Core空响应 traceId={} sessionId={} code={} message={}",
-                    request.traceId(),
-                    request.sessionId(),
+                    "Gateway收到Agent Core空响应 {} code={} message={}",
+                    LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                     response.code(),
                     response.message());
             return;
         }
         LOGGER.info(
-                "Gateway完成聊天转发 traceId={} sessionId={} code={} routeDecision={} riskLevel={} ticketId={}",
-                request.traceId(),
-                request.sessionId(),
+                "Gateway完成聊天转发 {} code={} routeDecision={} riskLevel={} ticketId={}",
+                LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                 response.code(),
                 reply.routeDecision(),
                 reply.riskLevel(),
-                reply.ticketId());
+                LogFields.value(reply.ticketId()));
     }
 
     private void logAgentCoreActionResponse(ChatActionRequest request, ApiResponse<AgentReply> response) {
         AgentReply reply = response.data();
         if (reply == null) {
             LOGGER.warn(
-                    "Gateway收到Agent Core动作空响应 traceId={} sessionId={} code={} message={}",
-                    request.traceId(),
-                    request.sessionId(),
+                    "Gateway收到Agent Core动作空响应 {} code={} message={}",
+                    LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                     response.code(),
                     response.message());
             return;
         }
         LOGGER.info(
-                "Gateway完成聊天动作转发 traceId={} sessionId={} code={} actionType={} routeDecision={} riskLevel={}",
-                request.traceId(),
-                request.sessionId(),
+                "Gateway完成聊天动作转发 {} code={} actionType={} routeDecision={} riskLevel={}",
+                LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                 response.code(),
                 request.actionType(),
                 reply.routeDecision(),
@@ -636,6 +623,18 @@ public class ChatController {
 
     private String requestTraceId(String traceId) {
         return hasText(traceId) ? traceId : TraceIds.newTraceId();
+    }
+
+    private String principalId(Optional<AuthenticatedPrincipal> principal) {
+        return principal.map(AuthenticatedPrincipal::principalId)
+                .map(LogFields::value)
+                .orElse(LogFields.EMPTY_VALUE);
+    }
+
+    private String authSource(Optional<AuthenticatedPrincipal> principal) {
+        return principal.map(value -> value.authSource().name())
+                .map(LogFields::value)
+                .orElse(LogFields.EMPTY_VALUE);
     }
 
     private int normalizeLimit(int limit) {
