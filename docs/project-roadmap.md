@@ -316,7 +316,7 @@
 建议任务顺序：
 
 1. 完善启动文档和端口清单。（已完成基础覆盖）
-2. 统一日志字段：`traceId`、`sessionId`、`ticketId`、`userId`。（Gateway 聊天入口、Agent Core 入口和会话查询层已完成基础覆盖）
+2. 统一日志字段：`traceId`、`sessionId`、`ticketId`、`userId`。（Gateway 聊天入口、Agent Core 入口和会话查询层、Skill Engine 技能执行层已完成基础覆盖）
 3. 增加基础健康检查和依赖检查。（已完成基础覆盖）
 4. 补齐 Docker Compose。
 5. 再考虑 K8s、监控、告警和链路追踪。
@@ -328,6 +328,7 @@
 - 已新增日志字段规范文档：`docs/observability-log-fields.md`。
 - `smartcs-common` 已新增 `LogFields` 公共字段工具，Gateway 聊天入口已使用统一 `traceId/sessionId/userId/streamId` 日志片段。
 - Agent Core 入口和会话查询层已使用统一 `traceId/sessionId/userId` 日志片段。
+- Skill Engine 技能执行层已使用统一 `traceId/sessionId/userId` 日志片段，并保留 `skillId/executionId/status` 排障字段。
 
 中间件要求：
 

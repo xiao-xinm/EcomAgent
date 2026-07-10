@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.enums.RiskLevel;
 import com.smartcs.agent.common.enums.RouteDecision;
+import com.smartcs.agent.common.observability.LogFields;
 import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.skill.definition.SkillDtos.SkillDefinitionView;
 import com.smartcs.agent.skill.definition.SkillDtos.SkillExecuteRequest;
@@ -92,13 +93,11 @@ public class SkillExecutionService {
     @Transactional
     public SkillExecuteResult execute(SkillExecuteRequest request) {
         LOGGER.info(
-                "Skill Engine执行开始 traceId={} sessionId={} messageId={} userId={} skillId={} intent={}",
-                request.traceId(),
-                request.sessionId(),
-                request.messageId(),
-                request.userId(),
-                request.skillId(),
-                request.intent());
+                "Skill Engine执行开始 {} messageId={} skillId={} intent={}",
+                LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
+                LogFields.value(request.messageId()),
+                LogFields.value(request.skillId()),
+                LogFields.value(request.intent()));
         SkillDefinitionView skill = findExecutableSkill(request);
         if (skill == null) {
             throw new SkillOperationException(ErrorCode.SKILL_NOT_FOUND, "No active skill matches request");
@@ -117,14 +116,14 @@ public class SkillExecutionService {
         List<SkillStepResult> stepResults = buildStepResults(skill, status);
         String message = buildMessage(skill, status, routeDecision);
         LOGGER.info(
-                "Skill Engine执行决策 traceId={} executionId={} skillId={} intent={} riskLevel={} routeDecision={} status={} stepCount={}",
-                traceId,
-                executionId,
-                skill.skillId(),
-                skill.intent(),
-                riskLevel,
-                routeDecision,
-                status,
+                "Skill Engine执行决策 {} executionId={} skillId={} intent={} riskLevel={} routeDecision={} status={} stepCount={}",
+                LogFields.chat(traceId, request.sessionId(), request.userId()),
+                LogFields.value(executionId),
+                LogFields.value(skill.skillId()),
+                LogFields.value(skill.intent()),
+                LogFields.value(riskLevel),
+                LogFields.value(routeDecision),
+                LogFields.value(status),
                 stepResults.size());
 
         SkillExecuteResult result = new SkillExecuteResult(
@@ -355,10 +354,8 @@ public class SkillExecutionService {
             return response;
         } catch (DataAccessException exception) {
             LOGGER.warn(
-                    "查询电商订单失败，回退到mock响应 traceId={} sessionId={} userId={}",
-                    request.traceId(),
-                    request.sessionId(),
-                    request.userId(),
+                    "查询电商订单失败，回退到mock响应 {}",
+                    LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                     exception);
             Map<String, Object> response = mockOrderQueryResponse(skill, request, status);
             response.put("fallbackReason", "ORDER_DOMAIN_QUERY_FAILED");
@@ -415,10 +412,8 @@ public class SkillExecutionService {
             return response;
         } catch (DataAccessException exception) {
             LOGGER.warn(
-                    "修改电商订单地址失败，回退到mock响应 traceId={} sessionId={} userId={}",
-                    request.traceId(),
-                    request.sessionId(),
-                    request.userId(),
+                    "修改电商订单地址失败，回退到mock响应 {}",
+                    LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                     exception);
             Map<String, Object> response = mockModifyAddressResponse(skill, request, status);
             response.put("fallbackReason", "ORDER_ADDRESS_MODIFY_FAILED");
@@ -458,10 +453,8 @@ public class SkillExecutionService {
             return response;
         } catch (DataAccessException exception) {
             LOGGER.warn(
-                    "查询电商物流失败，回退到mock响应 traceId={} sessionId={} userId={}",
-                    request.traceId(),
-                    request.sessionId(),
-                    request.userId(),
+                    "查询电商物流失败，回退到mock响应 {}",
+                    LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                     exception);
             Map<String, Object> response = mockLogisticsQueryResponse(skill, request, status);
             response.put("fallbackReason", "LOGISTICS_DOMAIN_QUERY_FAILED");
@@ -517,10 +510,8 @@ public class SkillExecutionService {
             return response;
         } catch (DataAccessException exception) {
             LOGGER.warn(
-                    "取消电商订单失败，回退到mock响应 traceId={} sessionId={} userId={}",
-                    request.traceId(),
-                    request.sessionId(),
-                    request.userId(),
+                    "取消电商订单失败，回退到mock响应 {}",
+                    LogFields.chat(request.traceId(), request.sessionId(), request.userId()),
                     exception);
             Map<String, Object> response = mockOrderCancelResponse(skill, request, status);
             response.put("fallbackReason", "ORDER_CANCEL_FAILED");
@@ -911,18 +902,18 @@ public class SkillExecutionService {
                     timestamp(result.startedAt()),
                     timestamp(result.finishedAt()));
             LOGGER.info(
-                    "Skill Engine执行日志已落库 traceId={} executionId={} skillId={} status={}",
-                    result.traceId(),
-                    result.executionId(),
-                    result.skillId(),
-                    result.status());
+                    "Skill Engine执行日志已落库 {} executionId={} skillId={} status={}",
+                    LogFields.chat(result.traceId(), result.sessionId(), request.userId()),
+                    LogFields.value(result.executionId()),
+                    LogFields.value(result.skillId()),
+                    LogFields.value(result.status()));
         } catch (DataAccessException exception) {
             LOGGER.warn(
-                    "Skill Engine执行日志落库失败 traceId={} executionId={} skillId={} status={}",
-                    result.traceId(),
-                    result.executionId(),
-                    result.skillId(),
-                    result.status(),
+                    "Skill Engine执行日志落库失败 {} executionId={} skillId={} status={}",
+                    LogFields.chat(result.traceId(), result.sessionId(), request.userId()),
+                    LogFields.value(result.executionId()),
+                    LogFields.value(result.skillId()),
+                    LogFields.value(result.status()),
                     exception);
             throw new SkillOperationException(
                     ErrorCode.SKILL_EXECUTION_FAILED,
