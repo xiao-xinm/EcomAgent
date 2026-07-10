@@ -332,6 +332,7 @@
 - Workbench 工单服务层已使用统一 `traceId/ticketId/userId/operatorId` 日志片段，并保留 `approvalId/takeoverId/status` 排障字段。
 - Notification 事件入口和服务层已使用统一 `traceId/ticketId/userId/sessionId/operatorId` 日志片段，并保留 `eventId/status/retryCount` 排障字段。
 - 已新增 `infra/docker/compose.yml` 和 `.env.example`，提供 MySQL 8.x 本地最小依赖编排，并自动挂载 `infra/sql` 初始化脚本。
+- 已新增 `docs/local-development-runbook.md`，固化本地 MySQL、IDEA 后端启动、前端入口、健康检查、烟测和常见排障流程。
 
 中间件要求：
 

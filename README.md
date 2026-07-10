@@ -251,6 +251,7 @@ docs: update architecture diagram for risk routing
 | 需求文档 | [./requirements/AI客服Agent需求文档.md](../AI客服Agent需求文档.md) | 完整功能需求和非功能需求定义 |
 | 架构设计文档 | [./docs/架构设计文档.md](./docs/架构设计文档.md) | 五层架构、核心模块设计、数据模型、部署方案 |
 | 项目路线图 | [./docs/project-roadmap.md](./docs/project-roadmap.md) | 后续开发阶段、执行流程、验收要求和中间件准入规则 |
+| 本地启动 Runbook | [./docs/local-development-runbook.md](./docs/local-development-runbook.md) | 本地 MySQL、后端、前端、健康检查和烟测排障步骤 |
 | 验收记录模板 | [./docs/e2e-validation-template.md](./docs/e2e-validation-template.md) | 每轮端到端联调和页面验收的标准记录模板 |
 | 日志字段规范 | [./docs/observability-log-fields.md](./docs/observability-log-fields.md) | Phase 9 统一日志字段和后续观测迁移规则 |
 | API 文档 | 启动后访问 Swagger UI | 网关 `/swagger-ui.html`、Agent Core `/docs` |
