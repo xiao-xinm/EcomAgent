@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.common.domain.ChatMessageView;
 import com.smartcs.agent.common.domain.ChatSessionView;
+import com.smartcs.agent.common.observability.LogFields;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -48,7 +49,11 @@ public class ChatSessionQueryService {
                 this::mapSession,
                 sessionId);
         Optional<ChatSessionView> session = rows.stream().findFirst();
-        LOGGER.info("查询用户端会话 sessionId={} found={}", sessionId, session.isPresent());
+        LOGGER.info(
+                "查询用户端会话 {} found={}",
+                session.map(value -> LogFields.chat(value.traceId(), value.sessionId(), value.userId()))
+                        .orElse(LogFields.keyValues(LogFields.SESSION_ID, sessionId)),
+                session.isPresent());
         return session;
     }
 
@@ -66,7 +71,14 @@ public class ChatSessionQueryService {
                 this::mapMessage,
                 sessionId,
                 normalizedLimit);
-        LOGGER.info("查询用户端会话消息 sessionId={} limit={} count={}", sessionId, normalizedLimit, messages.size());
+        LOGGER.info(
+                "查询用户端会话消息 {} limit={} count={}",
+                messages.stream()
+                        .findFirst()
+                        .map(message -> LogFields.chat(message.traceId(), message.sessionId(), message.userId()))
+                        .orElse(LogFields.keyValues(LogFields.SESSION_ID, sessionId)),
+                normalizedLimit,
+                messages.size());
         return messages;
     }
 
