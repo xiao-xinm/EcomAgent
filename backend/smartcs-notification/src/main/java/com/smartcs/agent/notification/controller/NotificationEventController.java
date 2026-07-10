@@ -2,6 +2,7 @@ package com.smartcs.agent.notification.controller;
 
 import com.smartcs.agent.common.dto.ApiResponse;
 import com.smartcs.agent.common.dto.PageResult;
+import com.smartcs.agent.common.observability.LogFields;
 import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResult;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResultRequest;
@@ -40,12 +41,10 @@ public class NotificationEventController {
                 ? TraceIds.newTraceId()
                 : request.traceId();
         LOGGER.info(
-                "Notification event received traceId={} source={} eventType={} ticketId={} userId={}",
-                traceId,
-                request.sourceService(),
-                request.eventType(),
-                request.ticketId(),
-                request.recipientUserId());
+                "Notification event received {} source={} eventType={}",
+                eventFields(traceId, request.ticketId(), request.recipientUserId()),
+                LogFields.value(request.sourceService()),
+                LogFields.value(request.eventType()));
         NotificationEventResult result = notificationEventService.accept(request);
         return ApiResponse.success(result, traceId);
     }
@@ -60,12 +59,10 @@ public class NotificationEventController {
             @RequestParam(defaultValue = "20") int pageSize) {
         String traceId = TraceIds.newTraceId();
         LOGGER.info(
-                "Notification events list requested traceId={} eventType={} ticketId={} recipientUserId={} status={} pageNo={} pageSize={}",
-                traceId,
-                eventType,
-                ticketId,
-                recipientUserId,
-                status,
+                "Notification events list requested {} eventType={} status={} pageNo={} pageSize={}",
+                eventFields(traceId, ticketId, recipientUserId),
+                LogFields.value(eventType),
+                LogFields.value(status),
                 pageNo,
                 pageSize);
         PageResult<NotificationEventView> result = notificationEventService.list(
@@ -75,7 +72,7 @@ public class NotificationEventController {
                 status,
                 pageNo,
                 pageSize);
-        LOGGER.info("Notification events list completed traceId={} total={}", traceId, result.total());
+        LOGGER.info("Notification events list completed {} total={}", eventFields(traceId, ticketId, recipientUserId), result.total());
         return ApiResponse.success(result, traceId);
     }
 
@@ -86,17 +83,27 @@ public class NotificationEventController {
         String traceId = TraceIds.newTraceId();
         LOGGER.info(
                 "Notification delivery result received traceId={} eventId={} status={} nextRetryAt={}",
-                traceId,
-                eventId,
-                request == null ? null : request.status(),
-                request == null ? null : request.nextRetryAt());
+                LogFields.value(traceId),
+                LogFields.value(eventId),
+                LogFields.value(request == null ? null : request.status()),
+                LogFields.value(request == null ? null : request.nextRetryAt()));
         NotificationDeliveryResult result = notificationEventService.recordDeliveryResult(eventId, request);
         LOGGER.info(
                 "Notification delivery result recorded traceId={} eventId={} status={} retryCount={}",
-                traceId,
-                result.eventId(),
-                result.status(),
+                LogFields.value(traceId),
+                LogFields.value(result.eventId()),
+                LogFields.value(result.status()),
                 result.retryCount());
         return ApiResponse.success(result, traceId);
+    }
+
+    private String eventFields(String traceId, String ticketId, String userId) {
+        return LogFields.keyValues(
+                LogFields.TRACE_ID,
+                traceId,
+                LogFields.TICKET_ID,
+                ticketId,
+                LogFields.USER_ID,
+                userId);
     }
 }

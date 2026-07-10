@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.common.enums.ErrorCode;
 import com.smartcs.agent.common.exception.SmartCsException;
+import com.smartcs.agent.common.observability.LogFields;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResult;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationDeliveryResultRequest;
 import com.smartcs.agent.notification.dto.NotificationEventDtos.NotificationEventRequest;
@@ -103,16 +104,12 @@ public class NotificationEventService {
                 timestamp(occurredAt),
                 timestamp(acceptedAt));
         LOGGER.info(
-                "Notification event persisted eventId={} traceId={} eventType={} channel={} ticketId={} sessionId={} userId={} operatorId={} title={} contentLength={}",
-                eventId,
-                request.traceId(),
-                request.eventType(),
-                channel,
-                request.ticketId(),
-                request.sessionId(),
-                request.recipientUserId(),
-                request.operatorId(),
-                request.title(),
+                "Notification event persisted {} eventId={} eventType={} channel={} title={} contentLength={}",
+                eventFields(request),
+                LogFields.value(eventId),
+                LogFields.value(request.eventType()),
+                LogFields.value(channel),
+                LogFields.value(request.title()),
                 request.content() == null ? 0 : request.content().length());
         return new NotificationEventResult(eventId, STATUS_ACCEPTED, channel, acceptedAt);
     }
@@ -165,11 +162,11 @@ public class NotificationEventService {
         NotificationDeliveryResult result = findDeliveryResult(normalizedEventId);
         LOGGER.info(
                 "Notification delivery status changed eventId={} status={} retryCount={} nextRetryAt={} deliveredAt={}",
-                result.eventId(),
-                result.status(),
+                LogFields.value(result.eventId()),
+                LogFields.value(result.status()),
                 result.retryCount(),
-                result.nextRetryAt(),
-                result.deliveredAt());
+                LogFields.value(result.nextRetryAt()),
+                LogFields.value(result.deliveredAt()));
         return result;
     }
 
@@ -327,6 +324,20 @@ public class NotificationEventService {
             LOGGER.warn("Notification payload JSON parse failed, fallback to empty payload. value={}", payloadJson);
             return Map.of();
         }
+    }
+
+    private String eventFields(NotificationEventRequest request) {
+        return LogFields.keyValues(
+                LogFields.TRACE_ID,
+                request.traceId(),
+                LogFields.TICKET_ID,
+                request.ticketId(),
+                LogFields.USER_ID,
+                request.recipientUserId(),
+                LogFields.SESSION_ID,
+                request.sessionId(),
+                LogFields.OPERATOR_ID,
+                request.operatorId());
     }
 
     private Timestamp timestamp(Instant instant) {
