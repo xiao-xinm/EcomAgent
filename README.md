@@ -120,7 +120,7 @@ smartcs-agent/
 - JDK 17+
 - Node.js 18+
 - Docker & Docker Compose
-- MySQL 8.x / Redis 7.x / RocketMQ 5.x（本地开发可用 Docker Compose 起全套）
+- MySQL 8.x（本地开发可用 Docker Compose 启动；Redis、RocketMQ、Milvus、ES 当前阶段不强制启用）
 
 ### 1. 克隆项目
 
@@ -133,16 +133,34 @@ cd smartcs-agent
 
 ```bash
 cd infra/docker
-docker compose up -d          # 启动 MySQL、Redis、RocketMQ、Milvus、ES
+docker compose up -d          # 启动 MySQL
+```
+
+如果你已经有可用的本地或虚拟机 MySQL，也可以跳过这一步，后端默认连接：
+
+```text
+jdbc:mysql://localhost:3306/smartcs_agent
+username=root
+password=root
 ```
 
 ### 3. 初始化数据库
 
 ```bash
 cd infra/sql
-mysql -u root -p < 01-schema.sql      # 建库建表
-mysql -u root -p < 02-seed-data.sql   # 初始化技能注册表等
+mysql -u root -p < 01-schema.sql
+mysql -u root -p smartcs_agent < 02-skill-schema.sql
+mysql -u root -p smartcs_agent < 03-enforce-enum-columns.sql
+mysql -u root -p smartcs_agent < 04-risk-approval-schema.sql
+mysql -u root -p smartcs_agent < 06-seed-risk-rules.sql
+mysql -u root -p smartcs_agent < 07-seed-skill-registry.sql
+mysql -u root -p smartcs_agent < 08-work-order-internal-note-action.sql
+mysql -u root -p smartcs_agent < 09-knowledge-faq-management.sql
+mysql -u root -p smartcs_agent < 10-notification-event-store.sql
+mysql -u root -p smartcs_agent < 11-notification-delivery-status.sql
 ```
+
+使用 `infra/docker/compose.yml` 首次启动空数据卷时，会自动执行上述 SQL；已有数据库只需要按缺失阶段补跑。
 
 ### 4. 构建后端骨架
 

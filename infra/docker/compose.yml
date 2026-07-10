@@ -1,0 +1,28 @@
+services:
+  mysql:
+    image: ${SMARTCS_MYSQL_IMAGE:-mysql:8.4}
+    container_name: smartcs-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SMARTCS_MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${SMARTCS_MYSQL_DATABASE:-smartcs_agent}
+      MYSQL_ROOT_HOST: "%"
+      TZ: ${SMARTCS_TZ:-Asia/Shanghai}
+    ports:
+      - "${SMARTCS_MYSQL_PORT:-3306}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - smartcs-mysql-data:/var/lib/mysql
+      - ../sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  smartcs-mysql-data:

@@ -318,7 +318,7 @@
 1. 完善启动文档和端口清单。（已完成基础覆盖）
 2. 统一日志字段：`traceId`、`sessionId`、`ticketId`、`userId`。（Gateway 聊天入口、Agent Core 入口和会话查询层、Skill Engine 技能执行层、Workbench 工单服务层、Notification 事件入口和服务层已完成基础覆盖）
 3. 增加基础健康检查和依赖检查。（已完成基础覆盖）
-4. 补齐 Docker Compose。
+4. 补齐 Docker Compose。（已完成 MySQL 最小依赖覆盖）
 5. 再考虑 K8s、监控、告警和链路追踪。
 
 当前进展：
@@ -331,10 +331,11 @@
 - Skill Engine 技能执行层已使用统一 `traceId/sessionId/userId` 日志片段，并保留 `skillId/executionId/status` 排障字段。
 - Workbench 工单服务层已使用统一 `traceId/ticketId/userId/operatorId` 日志片段，并保留 `approvalId/takeoverId/status` 排障字段。
 - Notification 事件入口和服务层已使用统一 `traceId/ticketId/userId/sessionId/operatorId` 日志片段，并保留 `eventId/status/retryCount` 排障字段。
+- 已新增 `infra/docker/compose.yml` 和 `.env.example`，提供 MySQL 8.x 本地最小依赖编排，并自动挂载 `infra/sql` 初始化脚本。
 
 中间件要求：
 
-- Docker Compose 阶段按需启用 MySQL、Redis、RocketMQ 等。
+- Docker Compose 当前只启用 MySQL；Redis、RocketMQ、Milvus、ES 暂不引入。
 - 监控阶段再评估 Prometheus、Grafana、OpenTelemetry。
 
 ## 5. 后续任务优先队列
