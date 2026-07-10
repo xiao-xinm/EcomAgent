@@ -220,6 +220,7 @@
 - 已新增 `notification_event` 表脚本：`infra/sql/10-notification-event-store.sql`。
 - `smartcs-notification` 已将 `POST /api/notifications/events` 接收的事件写入 MySQL。
 - 已新增 `GET /api/notifications/events` 分页查询接口，支持按事件类型、工单、用户和状态筛选。
+- 坐席工作台已新增通知事件只读页，支持按事件类型、工单、用户和状态查询，并展示投递状态、重试次数和失败原因。
 - 已新增 `infra/sql/11-notification-delivery-status.sql`，记录投递状态、失败原因、重试次数、下次重试时间和成功投递时间。
 - 已新增 `POST /api/notifications/events/{eventId}/delivery-result`，用于后续投递 worker 或 MQ 消费器回写 `DELIVERED` / `FAILED`。
 - Workbench 已将审批结论和接管状态类用户侧事件收口到统一私有边界，业务动作不再重复散落“写用户消息 + 投递通知”的相邻组合。

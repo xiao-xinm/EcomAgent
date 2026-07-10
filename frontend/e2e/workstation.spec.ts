@@ -28,6 +28,54 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+test('workstation renders notification events', async ({ page }) => {
+  await page.route('**/api/notifications/events?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        records: [
+          {
+            eventId: 'ntf_e2e_failed',
+            traceId,
+            sourceService: 'smartcs-workbench',
+            eventType: 'TAKEOVER_MESSAGE_SENT',
+            recipientUserId: 'u1001',
+            sessionId: 's_e2e_takeover',
+            ticketId: 'wo_e2e_takeover',
+            operatorId: 'agent001',
+            channel: 'USER_SESSION',
+            title: '人工消息已发送',
+            content: '我正在帮你核实订单状态',
+            payload: { takeoverStatus: 'IN_PROGRESS' },
+            status: 'FAILED',
+            retryCount: 2,
+            lastError: '站内信通道暂不可用',
+            nextRetryAt: '2026-07-10T13:10:00Z',
+            deliveredAt: null,
+            occurredAt: '2026-07-10T12:00:00Z',
+            acceptedAt: '2026-07-10T12:00:01Z',
+            createdAt: '2026-07-10T12:00:01Z',
+            updatedAt: '2026-07-10T12:00:01Z',
+          },
+        ],
+        total: 1,
+        pageNo: 1,
+        pageSize: 20,
+      })),
+    })
+  })
+
+  await page.goto('/notifications/events')
+
+  await expect(page.getByText('通知事件').first()).toBeVisible()
+  await expect(page.getByText('ntf_e2e_failed')).toBeVisible()
+  await expect(page.getByText('TAKEOVER_MESSAGE_SENT')).toBeVisible()
+  await expect(page.getByText('投递失败')).toBeVisible()
+  await expect(page.getByText('站内信通道暂不可用')).toBeVisible()
+  await expect(page.getByText('2', { exact: true })).toBeVisible()
+})
+
 test('workstation renders ticket list and can claim a pending ticket', async ({ page }) => {
   let claimCalled = false
 

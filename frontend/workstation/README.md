@@ -18,6 +18,14 @@ FAQ 管理页通过 Knowledge 服务访问 `docs/knowledge-api.md` 中的 FAQ �
 
 - `VITE_WORKSTATION_KNOWLEDGE_API_BASE_URL`：Knowledge 服务地址，默认 `http://localhost:8084`。
 
+## 通知事件配置
+
+通知事件页通过 Notification 服务查询投递状态、重试次数和失败原因，只读展示，不会修改投递状态。
+
+常用环境变量：
+
+- `VITE_WORKSTATION_NOTIFICATION_API_BASE_URL`：Notification 服务地址，默认 `http://localhost:8085`。
+
 ## 身份配置
 
 Phase 8 兼容期内，API client 会自动附加开发坐席身份头，并在执行操作前调用 `GET /api/workbench/me` 获取当前坐席：

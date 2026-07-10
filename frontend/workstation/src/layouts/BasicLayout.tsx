@@ -2,6 +2,7 @@ import React from "react";
 import { Layout, Menu, Typography } from "antd";
 import {
   DesktopOutlined,
+  BellOutlined,
   QuestionCircleOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
@@ -21,6 +22,11 @@ const menuItems = [
     icon: <QuestionCircleOutlined />,
     label: "FAQ 管理",
   },
+  {
+    key: "/notifications/events",
+    icon: <BellOutlined />,
+    label: "通知事件",
+  },
 ];
 
 const BasicLayout: React.FC = () => {
@@ -29,7 +35,9 @@ const BasicLayout: React.FC = () => {
 
   const selectedKey = location.pathname.startsWith("/knowledge/faq")
     ? "/knowledge/faq"
-    : "/tickets";
+    : location.pathname.startsWith("/notifications/events")
+      ? "/notifications/events"
+      : "/tickets";
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
