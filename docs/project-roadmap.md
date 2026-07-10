@@ -307,7 +307,7 @@
 
 ### Phase 9. 观测、运维与部署
 
-状态：待开始。
+状态：进行中。
 
 目标：
 
@@ -315,11 +315,16 @@
 
 建议任务顺序：
 
-1. 完善启动文档和端口清单。
+1. 完善启动文档和端口清单。（已完成基础覆盖）
 2. 统一日志字段：`traceId`、`sessionId`、`ticketId`、`userId`。
-3. 增加基础健康检查和依赖检查。
+3. 增加基础健康检查和依赖检查。（已完成基础覆盖）
 4. 补齐 Docker Compose。
 5. 再考虑 K8s、监控、告警和链路追踪。
+
+当前进展：
+
+- 已新增 `scripts/check-local-stack.ps1`，覆盖 Gateway、Agent Core、Skill Engine、Workbench、Knowledge、Notification 和三端前端入口健康检查。
+- 已新增 `scripts/smoke-e2e.ps1`，覆盖 FAQ、查订单、查物流、取消订单确认、退款人工审核入口、人工接管入口和用户会话归属保护。
 
 中间件要求：
 

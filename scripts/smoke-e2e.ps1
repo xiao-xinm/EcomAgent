@@ -6,6 +6,7 @@ param(
     [string]$KnowledgeBaseUrl = "http://localhost:8084",
     [string]$NotificationBaseUrl = "http://localhost:8085",
     [string]$UserId = "u1001",
+    [string]$OtherUserId = "u9999",
     [string]$Channel = "h5",
     [string]$MySqlDatabase = "smartcs_agent",
     [string]$MySqlUser = "root",
@@ -38,9 +39,25 @@ function Invoke-JsonPost([string]$Uri, [hashtable]$Body) {
     Invoke-RestMethod `
         -Method Post `
         -Uri $Uri `
+        -Headers (New-CustomerIdentityHeaders $UserId) `
         -ContentType "application/json; charset=utf-8" `
         -Body $bytes `
         -TimeoutSec 15
+}
+
+function Invoke-JsonGet([string]$Uri, [string]$IdentityUserId = $UserId) {
+    Invoke-RestMethod `
+        -Method Get `
+        -Uri $Uri `
+        -Headers (New-CustomerIdentityHeaders $IdentityUserId) `
+        -TimeoutSec 15
+}
+
+function New-CustomerIdentityHeaders([string]$IdentityUserId) {
+    @{
+        "X-SmartCS-User-Id" = $IdentityUserId
+        "X-SmartCS-Roles" = "CUSTOMER"
+    }
 }
 
 function Invoke-MySql([string]$Sql) {
@@ -110,6 +127,12 @@ $order = Send-Chat $TextMyOrders
 Assert-Equal $order.data.routeDecision "AUTO_REPLY" "order query route decision"
 Assert-Equal $order.data.metadata.intent "order.query" "order query intent"
 Assert-True (-not [string]::IsNullOrWhiteSpace($order.data.metadata.skillExecutionId)) "order query skillExecutionId"
+
+Write-Step "checking session ownership guard"
+$messages = Invoke-JsonGet "$GatewayBaseUrl/api/chat/sessions/$($order.data.sessionId)/messages?limit=100" $UserId
+Assert-Equal $messages.code "0000" "owned session messages code"
+$forbiddenMessages = Invoke-JsonGet "$GatewayBaseUrl/api/chat/sessions/$($order.data.sessionId)/messages?limit=100" $OtherUserId
+Assert-Equal $forbiddenMessages.code "1003" "cross-user session messages code"
 
 Write-Step "checking logistics query"
 $logistics = Send-Chat $TextMyLogistics

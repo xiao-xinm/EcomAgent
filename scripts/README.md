@@ -24,6 +24,7 @@ cd D:\NewProject\EcomAgent
 
 - FAQ 自动回复
 - 查订单
+- 用户会话归属校验：当前用户可拉取自己的消息，其他用户访问同一 `sessionId` 返回 `1003`
 - 查物流
 - 取消订单确认
 - 退款进入人工审核
@@ -33,6 +34,12 @@ cd D:\NewProject\EcomAgent
 
 ```powershell
 .\scripts\smoke-e2e.ps1 -SkipOrderCancelDbSetup
+```
+
+如需指定跨用户归属校验中的“另一个用户”：
+
+```powershell
+.\scripts\smoke-e2e.ps1 -OtherUserId u2002
 ```
 
 ## check-local-stack.ps1

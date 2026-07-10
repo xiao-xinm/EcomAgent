@@ -63,6 +63,7 @@ cd D:\NewProject\EcomAgent
 ```
 
 脚本会自动检查 FAQ、查订单、查物流、取消订单确认、退款人工审核入口和人工接管入口。坐席审批、开始接管、结束接管等页面操作仍按下方清单手工验收。
+脚本也会带开发身份头访问 Gateway，并验证“其他用户访问同一会话消息返回 `1003`”的会话归属保护。
 
 也可以执行前端页面级 E2E。该脚本会启动用户端 H5 和坐席工作台，并 mock 后端接口验证页面契约，不要求启动 MySQL 或后端服务：
 
@@ -105,6 +106,7 @@ docs/e2e-validation-YYYY-MM-DD.md
 - 路由决策为 `AUTO_REPLY`
 - 响应 metadata 中包含 `skillExecutionId`
 - 不创建人工工单
+- 使用其他用户身份访问该会话消息时返回 `1003`
 
 APP H5 也应在 `http://localhost:3002` 具备同样能力，后端会话 `channel` 应为 `app-h5`。
 
