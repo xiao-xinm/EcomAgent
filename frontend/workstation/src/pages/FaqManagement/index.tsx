@@ -31,19 +31,14 @@ import type {
   FaqItem,
   FaqQueryParams,
   FaqStatus,
-  FaqUpsertRequest,
 } from "../../types/knowledge";
+import {
+  toFaqFormValues,
+  toFaqUpsertRequest,
+  type FaqFormValues,
+} from "./formUtils";
 
 const { Text } = Typography;
-
-type FaqFormValues = {
-  question: string;
-  answer: string;
-  keywordsText: string;
-  category: string;
-  status: FaqStatus;
-  priority: number;
-};
 
 const FAQ_STATUS_META: Record<FaqStatus, { text: string; color: string }> = {
   DRAFT: { text: "草稿", color: "default" },
@@ -57,35 +52,6 @@ const statusOptions: { label: string; value: FaqStatus }[] = [
   { label: "停用", value: "DISABLED" },
 ];
 
-function splitKeywords(value: string): string[] {
-  return value
-    .split(/[,，;；\n]/)
-    .map(item => item.trim())
-    .filter(Boolean);
-}
-
-function toFormValues(record?: FaqItem): FaqFormValues {
-  return {
-    question: record?.question || "",
-    answer: record?.answer || "",
-    keywordsText: record?.keywords?.join("，") || "",
-    category: record?.category || "general",
-    status: record?.status || "ACTIVE",
-    priority: record?.priority ?? 10,
-  };
-}
-
-function toRequest(values: FaqFormValues): FaqUpsertRequest {
-  return {
-    question: values.question.trim(),
-    answer: values.answer.trim(),
-    keywords: splitKeywords(values.keywordsText),
-    category: values.category.trim(),
-    status: values.status,
-    priority: values.priority,
-  };
-}
-
 const FaqManagement: React.FC = () => {
   const actionRef = useRef<ActionType>();
   const [form] = Form.useForm<FaqFormValues>();
@@ -95,13 +61,13 @@ const FaqManagement: React.FC = () => {
 
   const openCreate = () => {
     setEditingRecord(null);
-    form.setFieldsValue(toFormValues());
+    form.setFieldsValue(toFaqFormValues());
     setModalOpen(true);
   };
 
   const openEdit = (record: FaqItem) => {
     setEditingRecord(record);
-    form.setFieldsValue(toFormValues(record));
+    form.setFieldsValue(toFaqFormValues(record));
     setModalOpen(true);
   };
 
@@ -113,7 +79,7 @@ const FaqManagement: React.FC = () => {
 
   const handleSave = async () => {
     const values = await form.validateFields();
-    const payload = toRequest(values);
+    const payload = toFaqUpsertRequest(values);
     if (payload.keywords.length === 0) {
       message.warning("请至少填写一个关键词");
       return;
@@ -322,7 +288,7 @@ const FaqManagement: React.FC = () => {
         <Form
           form={form}
           layout="vertical"
-          initialValues={toFormValues()}
+          initialValues={toFaqFormValues()}
           preserve={false}
         >
           <Form.Item
