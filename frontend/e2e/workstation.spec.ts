@@ -13,6 +13,21 @@ function apiResponse<T>(data: T) {
   }
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/workbench/me', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        operatorId: 'agent001',
+        principalType: 'AGENT',
+        roles: ['AGENT'],
+        authSource: 'DEV_HEADER',
+      })),
+    })
+  })
+})
+
 test('workstation renders ticket list and can claim a pending ticket', async ({ page }) => {
   let claimCalled = false
 
