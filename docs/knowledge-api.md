@@ -61,7 +61,13 @@ Content-Type: application/json; charset=utf-8
 
 ## FAQ 管理接口
 
-这些接口用于后续知识库后台或运营工具接入。当前阶段暂不做前端页面。
+这些接口用于知识库后台或运营工具接入。坐席工作台已提供 FAQ 管理入口：
+
+```text
+frontend/workstation -> /knowledge/faq
+```
+
+前端默认通过 `VITE_WORKSTATION_KNOWLEDGE_API_BASE_URL` 指向 Knowledge 服务，本地默认端口为 `8084`。
 
 ### 查询 FAQ 列表
 

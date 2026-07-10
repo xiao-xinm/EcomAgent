@@ -8,6 +8,15 @@
 - 工单详情、审批、领取、内部备注。
 - 人工接管开始、发送人工消息、结束接管。
 - 操作日志和用户可见消息回写。
+- FAQ 管理：列表查询、新增、编辑、启用和停用。
+
+## 知识库配置
+
+FAQ 管理页通过 Knowledge 服务访问 `docs/knowledge-api.md` 中的 FAQ 管理接口。
+
+常用环境变量：
+
+- `VITE_WORKSTATION_KNOWLEDGE_API_BASE_URL`：Knowledge 服务地址，默认 `http://localhost:8084`。
 
 ## 身份配置
 

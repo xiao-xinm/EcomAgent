@@ -2,6 +2,7 @@ import React from "react";
 import { Layout, Menu, Typography } from "antd";
 import {
   DesktopOutlined,
+  QuestionCircleOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
@@ -15,14 +16,19 @@ const menuItems = [
     icon: <UnorderedListOutlined />,
     label: "工单列表",
   },
+  {
+    key: "/knowledge/faq",
+    icon: <QuestionCircleOutlined />,
+    label: "FAQ 管理",
+  },
 ];
 
 const BasicLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const selectedKey = location.pathname.startsWith("/tickets")
-    ? "/tickets"
+  const selectedKey = location.pathname.startsWith("/knowledge/faq")
+    ? "/knowledge/faq"
     : "/tickets";
 
   return (

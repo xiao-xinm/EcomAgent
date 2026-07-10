@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import BasicLayout from "../layouts/BasicLayout";
 import TicketList from "../pages/TicketList";
 import TicketDetailPage from "../pages/TicketDetail";
+import FaqManagement from "../pages/FaqManagement";
 
 const AppRoutes: React.FC = () => (
   <Routes>
@@ -10,6 +11,7 @@ const AppRoutes: React.FC = () => (
       <Route index element={<Navigate to="/tickets" replace />} />
       <Route path="tickets" element={<TicketList />} />
       <Route path="tickets/:ticketId" element={<TicketDetailPage />} />
+      <Route path="knowledge/faq" element={<FaqManagement />} />
     </Route>
   </Routes>
 );
