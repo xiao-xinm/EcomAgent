@@ -335,6 +335,9 @@
 - Notification 事件入口和服务层已使用统一 `traceId/ticketId/userId/sessionId/operatorId` 日志片段，并保留 `eventId/status/retryCount` 排障字段。
 - 已新增 `infra/docker/compose.yml` 和 `.env.example`，提供 MySQL 8.x 本地最小依赖编排，并自动挂载 `infra/sql` 初始化脚本。
 - 已新增 `docs/local-development-runbook.md`，固化本地 MySQL、IDEA 后端启动、前端入口、健康检查、烟测和常见排障流程。
+- 坐席工作台已补齐 FAQ 表单单元测试和当前坐席身份 E2E mock；工单、审批、人工接管、通知事件等 6 条 Playwright 场景可重复运行。
+- 坐席工作台已采用路由级懒加载，页面模块按访问路径加载，降低首次进入工作台的入口包体积。
+- 已将 `react-router-dom` 升级至 `6.30.4`、将锁定的 `form-data` 升级至 `4.0.6`，消除对应生产依赖审计告警；当前最新稳定版 `@ant-design/pro-components` 仍通过上游 `path-to-regexp` 保留审计风险，待上游发布兼容修复或单独评估替代方案。
 
 中间件要求：
 
