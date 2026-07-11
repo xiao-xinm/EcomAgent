@@ -26,3 +26,29 @@ spring:
         enabled: false
     sentinel:
       enabled: false
+
+smartcs:
+  knowledge:
+    retrieval:
+      # 默认保持现有关键词实现；hybrid 连接器完成后再显式开启。
+      mode: ${SMARTCS_RETRIEVAL_MODE:keyword}
+      elasticsearch-top-k: ${SMARTCS_RETRIEVAL_ES_TOP_K:10}
+      vector-top-k: ${SMARTCS_RETRIEVAL_VECTOR_TOP_K:10}
+      final-top-k: ${SMARTCS_RETRIEVAL_FINAL_TOP_K:5}
+      rrf-k: ${SMARTCS_RETRIEVAL_RRF_K:60}
+    vector:
+      datasource:
+        url: ${SMARTCS_VECTOR_DB_URL:jdbc:postgresql://localhost:5432/smartcs_knowledge}
+        username: ${SMARTCS_VECTOR_DB_USERNAME:postgres}
+        password: ${SMARTCS_VECTOR_DB_PASSWORD:}
+      dimensions: ${SMARTCS_EMBEDDING_DIMENSIONS:1024}
+    elasticsearch:
+      url: ${SMARTCS_ES_URL:http://localhost:9200}
+      username: ${SMARTCS_ES_USERNAME:}
+      password: ${SMARTCS_ES_PASSWORD:}
+      index: ${SMARTCS_ES_INDEX:smartcs_knowledge_faq_v1}
+    embedding:
+      base-url: ${SMARTCS_EMBEDDING_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      api-key: ${DASHSCOPE_API_KEY:}
+      model: ${SMARTCS_EMBEDDING_MODEL:text-embedding-v4}
+      dimensions: ${SMARTCS_EMBEDDING_DIMENSIONS:1024}

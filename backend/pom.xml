@@ -49,7 +49,6 @@
         <!-- ==================== 中间件 & 工具版本 ==================== -->
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <rocketmq-spring.version>2.3.1</rocketmq-spring.version>
-        <milvus-sdk.version>2.4.4</milvus-sdk.version>
         <knife4j.version>4.5.0</knife4j.version>
         <jjwt.version>0.12.6</jjwt.version>
         <hutool.version>5.8.27</hutool.version>
@@ -160,15 +159,6 @@
                 <groupId>org.apache.rocketmq</groupId>
                 <artifactId>rocketmq-spring-boot-starter</artifactId>
                 <version>${rocketmq-spring.version}</version>
-            </dependency>
-
-            <!-- ============================== -->
-            <!-- Milvus Java SDK                 -->
-            <!-- ============================== -->
-            <dependency>
-                <groupId>io.milvus</groupId>
-                <artifactId>milvus-sdk-java</artifactId>
-                <version>${milvus-sdk.version}</version>
             </dependency>
 
             <!-- ============================== -->
@@ -560,7 +550,8 @@
     ║    - io.zipkin.reporter2:zipkin-reporter-brave              ║
     ║  业务依赖:                                                   ║
     ║    - smartcs-common                                         ║
-    ║    - milvus-sdk-java (向量检索)                               ║
+    ║    - PostgreSQL JDBC + pgvector (向量检索)                    ║
+    ║    - Elasticsearch REST API (关键词检索)                      ║
     ║    - mybatis-plus-spring-boot3-starter                      ║
     ║    - caffeine (嵌入缓存)                                     ║
     ║    - hutool-all                                             ║

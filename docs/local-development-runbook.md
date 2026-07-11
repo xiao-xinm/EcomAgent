@@ -90,10 +90,10 @@ SMARTCS_DB_PASSWORD=root
 Knowledge 混合检索后续使用以下环境变量。密码和 API Key 只能配置在 IDEA、系统环境变量或未提交的本地配置中：
 
 ```text
-SMARTCS_VECTOR_DB_URL=jdbc:postgresql://192.168.10.16:5432/smartcs_knowledge
+SMARTCS_VECTOR_DB_URL=jdbc:postgresql://<vm-ip>:5432/smartcs_knowledge
 SMARTCS_VECTOR_DB_USERNAME=postgres
 SMARTCS_VECTOR_DB_PASSWORD=<local-secret>
-SMARTCS_ES_URL=http://192.168.10.16:9200
+SMARTCS_ES_URL=http://<vm-ip>:9200
 SMARTCS_ES_USERNAME=<local-username>
 SMARTCS_ES_PASSWORD=<local-secret>
 DASHSCOPE_API_KEY=<local-secret>
@@ -105,8 +105,8 @@ SMARTCS_EMBEDDING_DIMENSIONS=1024
 虚拟机端口检查：
 
 ```powershell
-Test-NetConnection 192.168.10.16 -Port 5432
-Test-NetConnection 192.168.10.16 -Port 9200
+Test-NetConnection <vm-ip> -Port 5432
+Test-NetConnection <vm-ip> -Port 9200
 ```
 
 ## 5. 启动前端
