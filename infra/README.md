@@ -6,6 +6,8 @@
 
 - `docker/`：本地开发 Docker Compose
 - `sql/`：DDL、迁移脚本、初始化数据
+- `postgres/`：Knowledge pgvector 索引结构
+- `elasticsearch/`：Knowledge 中文关键词索引 mapping
 - `rocketmq/`：Topic、Consumer Group、ACL 配置
 - `k8s/`：Kubernetes manifests 或 Helm Chart
 

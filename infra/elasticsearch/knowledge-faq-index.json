@@ -1,0 +1,64 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "analyzer": {
+        "smartcs_zh": {
+          "type": "custom",
+          "tokenizer": "smartcn_tokenizer",
+          "filter": [
+            "lowercase",
+            "smartcn_stop"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "faqId": {
+        "type": "keyword"
+      },
+      "question": {
+        "type": "text",
+        "analyzer": "smartcs_zh",
+        "fields": {
+          "raw": {
+            "type": "keyword",
+            "ignore_above": 512
+          }
+        }
+      },
+      "answer": {
+        "type": "text",
+        "analyzer": "smartcs_zh"
+      },
+      "keywords": {
+        "type": "text",
+        "analyzer": "smartcs_zh",
+        "fields": {
+          "raw": {
+            "type": "keyword"
+          }
+        }
+      },
+      "category": {
+        "type": "keyword"
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "priority": {
+        "type": "integer"
+      },
+      "contentHash": {
+        "type": "keyword"
+      },
+      "sourceUpdatedAt": {
+        "type": "date"
+      }
+    }
+  }
+}
