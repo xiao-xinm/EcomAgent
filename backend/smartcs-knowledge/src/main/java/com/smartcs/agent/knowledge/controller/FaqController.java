@@ -8,6 +8,7 @@ import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
+import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer.IndexSyncSummary;
 import com.smartcs.agent.knowledge.service.FaqKnowledgeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,6 +122,21 @@ public class FaqController {
                 traceId,
                 result.faqId(),
                 result.status());
+        return ApiResponse.success(result, traceId);
+    }
+
+    @PostMapping("/index/rebuild")
+    public ApiResponse<IndexSyncSummary> rebuildIndex() {
+        String traceId = TraceIds.newTraceId();
+        LOGGER.info("FAQ index rebuild requested traceId={}", traceId);
+        IndexSyncSummary result = faqKnowledgeService.rebuildIndexes();
+        LOGGER.info(
+                "FAQ index rebuild completed traceId={} enabled={} documentCount={} successCount={} failureCount={}",
+                traceId,
+                result.enabled(),
+                result.documentCount(),
+                result.successCount(),
+                result.failureCount());
         return ApiResponse.success(result, traceId);
     }
 }

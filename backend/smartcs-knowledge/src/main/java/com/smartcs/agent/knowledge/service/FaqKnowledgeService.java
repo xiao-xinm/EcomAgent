@@ -9,6 +9,8 @@ import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
+import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer;
+import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer.IndexSyncSummary;
 import com.smartcs.agent.knowledge.retrieval.HybridKnowledgeRetriever;
 import com.smartcs.agent.knowledge.retrieval.HybridKnowledgeRetriever.HybridRetrievalResult;
 import java.sql.ResultSet;
@@ -89,19 +91,29 @@ public class FaqKnowledgeService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final HybridKnowledgeRetriever hybridKnowledgeRetriever;
+    private final KnowledgeIndexSynchronizer indexSynchronizer;
 
     public FaqKnowledgeService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
-        this(jdbcTemplate, objectMapper, null);
+        this(jdbcTemplate, objectMapper, null, null);
+    }
+
+    public FaqKnowledgeService(
+            JdbcTemplate jdbcTemplate,
+            ObjectMapper objectMapper,
+            HybridKnowledgeRetriever hybridKnowledgeRetriever) {
+        this(jdbcTemplate, objectMapper, hybridKnowledgeRetriever, null);
     }
 
     @Autowired
     public FaqKnowledgeService(
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper,
-            HybridKnowledgeRetriever hybridKnowledgeRetriever) {
+            HybridKnowledgeRetriever hybridKnowledgeRetriever,
+            KnowledgeIndexSynchronizer indexSynchronizer) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.hybridKnowledgeRetriever = hybridKnowledgeRetriever;
+        this.indexSynchronizer = indexSynchronizer;
     }
 
     public FaqQueryResponse query(FaqQueryRequest request) {
@@ -197,7 +209,9 @@ public class FaqKnowledgeService {
                 normalized.category(),
                 normalized.status(),
                 normalized.priority());
-        return getFaqOrThrow(faqId);
+        FaqItem result = getFaqOrThrow(faqId);
+        synchronizeIndex(result);
+        return result;
     }
 
     public FaqItem updateFaq(String faqId, FaqUpsertRequest request) {
@@ -225,7 +239,9 @@ public class FaqKnowledgeService {
         if (updated <= 0) {
             throw new IllegalArgumentException("FAQ 不存在: " + normalizedFaqId);
         }
-        return getFaqOrThrow(normalizedFaqId);
+        FaqItem result = getFaqOrThrow(normalizedFaqId);
+        synchronizeIndex(result);
+        return result;
     }
 
     public FaqItem updateStatus(String faqId, FaqStatusRequest request) {
@@ -242,7 +258,23 @@ public class FaqKnowledgeService {
         if (updated <= 0) {
             throw new IllegalArgumentException("FAQ 不存在: " + normalizedFaqId);
         }
-        return getFaqOrThrow(normalizedFaqId);
+        FaqItem result = getFaqOrThrow(normalizedFaqId);
+        synchronizeIndex(result);
+        return result;
+    }
+
+    public IndexSyncSummary rebuildIndexes() {
+        if (indexSynchronizer == null) {
+            return IndexSyncSummary.disabled();
+        }
+        List<FaqItem> faqs = jdbcTemplate.query(
+                """
+                SELECT faq_id, question, answer, keywords, category, status, priority, created_at, updated_at
+                FROM knowledge_faq
+                ORDER BY priority DESC, updated_at DESC, faq_id ASC
+                """,
+                (rs, rowNum) -> mapFaqItem(rs));
+        return indexSynchronizer.rebuild(faqs);
     }
 
     private List<FaqEntry> activeFaqEntries() {
@@ -310,6 +342,20 @@ public class FaqKnowledgeService {
             throw new IllegalArgumentException("FAQ 不存在: " + faqId);
         }
         return rows.get(0);
+    }
+
+    private void synchronizeIndex(FaqItem faq) {
+        if (indexSynchronizer == null) {
+            return;
+        }
+        IndexSyncSummary summary = indexSynchronizer.synchronize(faq);
+        if (summary.enabled() && !summary.allSucceeded()) {
+            LOGGER.warn(
+                    "FAQ 检索索引增量同步部分失败 faqId={} successCount={} failureCount={}",
+                    faq.faqId(),
+                    summary.successCount(),
+                    summary.failureCount());
+        }
     }
 
     private FaqItem mapFaqItem(ResultSet rs) throws SQLException {

@@ -12,6 +12,7 @@ import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
+import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer.IndexSyncSummary;
 import com.smartcs.agent.knowledge.service.FaqKnowledgeService;
 import java.time.Instant;
 import java.util.List;
@@ -97,6 +98,21 @@ class FaqControllerTest {
         assertThat(response.code()).isEqualTo("0000");
         assertThat(response.data().status()).isEqualTo("DISABLED");
         verify(faqKnowledgeService).updateStatus("faq_refund_arrival", request);
+    }
+
+    @Test
+    void rebuildIndexReturnsOperationSummary() {
+        FaqKnowledgeService faqKnowledgeService = mock(FaqKnowledgeService.class);
+        FaqController controller = new FaqController(faqKnowledgeService);
+        IndexSyncSummary summary = new IndexSyncSummary(true, 7, 16, 0, List.of());
+        when(faqKnowledgeService.rebuildIndexes()).thenReturn(summary);
+
+        ApiResponse<IndexSyncSummary> response = controller.rebuildIndex();
+
+        assertThat(response.code()).isEqualTo("0000");
+        assertThat(response.data()).isSameAs(summary);
+        assertThat(response.data().documentCount()).isEqualTo(7);
+        verify(faqKnowledgeService).rebuildIndexes();
     }
 
     private FaqItem faqItem(String faqId, String status) {
