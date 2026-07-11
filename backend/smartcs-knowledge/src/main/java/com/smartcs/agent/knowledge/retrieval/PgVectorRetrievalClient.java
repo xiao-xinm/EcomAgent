@@ -4,7 +4,6 @@ import com.smartcs.agent.knowledge.embedding.EmbeddingClient;
 import com.smartcs.agent.knowledge.embedding.EmbeddingClient.EmbeddingResult;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,7 +69,7 @@ public class PgVectorRetrievalClient implements VectorRetrievalClient {
             return List.of();
         }
 
-        String vectorLiteral = toVectorLiteral(result.vector());
+        String vectorLiteral = VectorLiterals.from(result.vector());
         try {
             LOGGER.info(
                     "pgvector FAQ 检索开始 model={} dimensions={} topK={} questionLength={}",
@@ -97,17 +96,6 @@ public class PgVectorRetrievalClient implements VectorRetrievalClient {
             LOGGER.warn("pgvector FAQ 检索失败，语义召回将降级 reason={}", exception.getMessage());
             return List.of();
         }
-    }
-
-    private String toVectorLiteral(List<Double> vector) {
-        return vector.stream()
-                .peek(value -> {
-                    if (value == null || !Double.isFinite(value)) {
-                        throw new IllegalArgumentException("Embedding 包含非法数值");
-                    }
-                })
-                .map(String::valueOf)
-                .collect(Collectors.joining(",", "[", "]"));
     }
 
     private static int validateDimensions(int value) {

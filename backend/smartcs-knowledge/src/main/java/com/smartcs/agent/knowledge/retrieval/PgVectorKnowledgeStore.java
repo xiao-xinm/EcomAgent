@@ -1,5 +1,6 @@
 package com.smartcs.agent.knowledge.retrieval;
 
+import com.smartcs.agent.knowledge.document.FaqIndexDocument;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.annotation.PreDestroy;
@@ -33,6 +34,23 @@ public class PgVectorKnowledgeStore {
             LIMIT ?
             """;
     private static final String SOURCE = "pgvector-cosine-v1";
+    private static final String UPSERT_SQL = """
+            INSERT INTO knowledge_faq_embedding
+                (faq_id, question, answer, category, status, content_hash, source_updated_at,
+                 embedding_model, embedding_dimensions, embedding, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS vector), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (faq_id) DO UPDATE SET
+                question = EXCLUDED.question,
+                answer = EXCLUDED.answer,
+                category = EXCLUDED.category,
+                status = EXCLUDED.status,
+                content_hash = EXCLUDED.content_hash,
+                source_updated_at = EXCLUDED.source_updated_at,
+                embedding_model = EXCLUDED.embedding_model,
+                embedding_dimensions = EXCLUDED.embedding_dimensions,
+                embedding = EXCLUDED.embedding,
+                updated_at = CURRENT_TIMESTAMP
+            """;
 
     private final JdbcTemplate jdbcTemplate;
     private final HikariDataSource dataSource;
@@ -74,6 +92,29 @@ public class PgVectorKnowledgeStore {
                 dimensions,
                 vectorLiteral,
                 topK);
+    }
+
+    public int upsert(FaqIndexDocument document, String model, int dimensions, String vectorLiteral) {
+        return jdbcTemplate.update(
+                UPSERT_SQL,
+                document.faqId(),
+                document.question(),
+                document.answer(),
+                document.category(),
+                document.status(),
+                document.contentHash(),
+                java.sql.Timestamp.from(document.sourceUpdatedAt()),
+                model,
+                dimensions,
+                vectorLiteral);
+    }
+
+    public int delete(String faqId) {
+        return jdbcTemplate.update("DELETE FROM knowledge_faq_embedding WHERE faq_id = ?", faqId);
+    }
+
+    public int deleteAll() {
+        return jdbcTemplate.update("DELETE FROM knowledge_faq_embedding");
     }
 
     @PreDestroy
