@@ -2,9 +2,6 @@ package com.smartcs.agent.knowledge.retrieval;
 
 import com.smartcs.agent.knowledge.embedding.EmbeddingClient;
 import com.smartcs.agent.knowledge.embedding.EmbeddingClient.EmbeddingResult;
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource;
-import jakarta.annotation.PreDestroy;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -28,36 +25,21 @@ import org.springframework.stereotype.Service;
 public class PgVectorRetrievalClient implements VectorRetrievalClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PgVectorRetrievalClient.class);
-    private static final String SOURCE = "pgvector-cosine-v1";
-    private static final String SEARCH_SQL = """
-            SELECT faq_id,
-                   question,
-                   answer,
-                   category,
-                   1 - (embedding <=> CAST(? AS vector)) AS similarity
-            FROM knowledge_faq_embedding
-            WHERE status = 'ACTIVE'
-              AND embedding_model = ?
-              AND embedding_dimensions = ?
-            ORDER BY embedding <=> CAST(? AS vector)
-            LIMIT ?
-            """;
-
-    private final JdbcTemplate jdbcTemplate;
+    private final PgVectorKnowledgeStore store;
     private final EmbeddingClient embeddingClient;
-    private final HikariDataSource dataSource;
     private final int dimensions;
     private final double minSimilarity;
 
     @Autowired
     public PgVectorRetrievalClient(
+            PgVectorKnowledgeStore store,
             EmbeddingClient embeddingClient,
-            @Value("${smartcs.knowledge.vector.datasource.url}") String url,
-            @Value("${smartcs.knowledge.vector.datasource.username}") String username,
-            @Value("${smartcs.knowledge.vector.datasource.password}") String password,
             @Value("${smartcs.knowledge.vector.dimensions:1024}") int dimensions,
             @Value("${smartcs.knowledge.retrieval.vector-min-similarity:0.55}") double minSimilarity) {
-        this(createDataSource(url, username, password), embeddingClient, dimensions, minSimilarity);
+        this.store = store;
+        this.embeddingClient = embeddingClient;
+        this.dimensions = validateDimensions(dimensions);
+        this.minSimilarity = validateMinSimilarity(minSimilarity);
     }
 
     PgVectorRetrievalClient(
@@ -65,23 +47,7 @@ public class PgVectorRetrievalClient implements VectorRetrievalClient {
             EmbeddingClient embeddingClient,
             int dimensions,
             double minSimilarity) {
-        this.jdbcTemplate = jdbcTemplate;
-        this.embeddingClient = embeddingClient;
-        this.dataSource = null;
-        this.dimensions = validateDimensions(dimensions);
-        this.minSimilarity = validateMinSimilarity(minSimilarity);
-    }
-
-    private PgVectorRetrievalClient(
-            HikariDataSource dataSource,
-            EmbeddingClient embeddingClient,
-            int dimensions,
-            double minSimilarity) {
-        this.jdbcTemplate = new JdbcTemplate(dataSource);
-        this.embeddingClient = embeddingClient;
-        this.dataSource = dataSource;
-        this.dimensions = validateDimensions(dimensions);
-        this.minSimilarity = validateMinSimilarity(minSimilarity);
+        this(new PgVectorKnowledgeStore(jdbcTemplate), embeddingClient, dimensions, minSimilarity);
     }
 
     @Override
@@ -112,19 +78,10 @@ public class PgVectorRetrievalClient implements VectorRetrievalClient {
                     dimensions,
                     topK,
                     question.length());
-            List<KnowledgeRetrievalCandidate> candidates = jdbcTemplate.query(
-                    SEARCH_SQL,
-                    (rs, rowNum) -> new KnowledgeRetrievalCandidate(
-                            rs.getString("faq_id"),
-                            rs.getString("question"),
-                            rs.getString("answer"),
-                            rs.getString("category"),
-                            SOURCE,
-                            rs.getDouble("similarity")),
+            List<KnowledgeRetrievalCandidate> candidates = store.search(
                     vectorLiteral,
                     result.model(),
                     dimensions,
-                    vectorLiteral,
                     topK);
             List<KnowledgeRetrievalCandidate> filtered = candidates.stream()
                     .filter(candidate -> Double.isFinite(candidate.score()))
@@ -140,27 +97,6 @@ public class PgVectorRetrievalClient implements VectorRetrievalClient {
             LOGGER.warn("pgvector FAQ 检索失败，语义召回将降级 reason={}", exception.getMessage());
             return List.of();
         }
-    }
-
-    @PreDestroy
-    public void close() {
-        if (dataSource != null) {
-            dataSource.close();
-        }
-    }
-
-    private static HikariDataSource createDataSource(String url, String username, String password) {
-        HikariConfig config = new HikariConfig();
-        config.setPoolName("smartcs-knowledge-vector");
-        config.setDriverClassName("org.postgresql.Driver");
-        config.setJdbcUrl(requireText(url, "vector datasource url"));
-        config.setUsername(requireText(username, "vector datasource username"));
-        config.setPassword(password == null ? "" : password);
-        config.setMaximumPoolSize(4);
-        config.setMinimumIdle(0);
-        config.setConnectionTimeout(3000L);
-        config.setValidationTimeout(2000L);
-        return new HikariDataSource(config);
     }
 
     private String toVectorLiteral(List<Double> vector) {
@@ -188,10 +124,4 @@ public class PgVectorRetrievalClient implements VectorRetrievalClient {
         return value;
     }
 
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " 不能为空");
-        }
-        return value.trim();
-    }
 }
