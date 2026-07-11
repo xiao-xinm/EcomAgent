@@ -198,6 +198,9 @@
 - 已确认混合检索架构：MySQL 是 FAQ 权威数据源，Elasticsearch 负责中文关键词/BM25 召回，pgvector 负责语义召回，Knowledge 服务执行应用层 RRF 融合。
 - 已确认本地中间件版本：PostgreSQL 16 + pgvector 0.8.2、Elasticsearch 8.15.0；Elasticsearch 已启用安全认证并安装 `analysis-smartcn`。
 - Embedding 使用 DashScope `text-embedding-v4`、1024 维，密钥沿用环境变量 `DASHSCOPE_API_KEY`。
+- 已实现 Elasticsearch 中文关键词检索、pgvector 语义检索和应用层 RRF 融合，默认 `keyword` 模式不连接外部检索服务。
+- 已实现 MySQL FAQ 新增、编辑、启停后的 ES/pgvector 尽力同步，以及 `POST /api/knowledge/faq/index/rebuild` 全量重建接口。
+- 已新增 `scripts/smoke-knowledge-hybrid.ps1`，用于真实中间件的重建、双路命中和语义召回验收。
 
 中间件要求：
 

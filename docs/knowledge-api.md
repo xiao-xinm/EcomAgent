@@ -2,7 +2,7 @@
 
 本文档记录 `smartcs-knowledge` 当前阶段的 FAQ 查询与 FAQ 管理能力。
 
-当前实现仍是 MySQL FAQ 关键词匹配。下一阶段保持 API 契约不变，将检索实现升级为 Elasticsearch 中文关键词/BM25 召回与 pgvector 语义召回，并在 Knowledge 服务内使用 RRF 融合排名。
+默认 `keyword` 模式仍使用 MySQL FAQ 关键词匹配。配置 `SMARTCS_RETRIEVAL_MODE=hybrid` 后，查询会优先使用 Elasticsearch 中文关键词/BM25 召回与 pgvector 语义召回，并在 Knowledge 服务内使用 RRF 融合排名。
 
 ## 服务信息
 
@@ -21,6 +21,13 @@
 - Knowledge 服务分别获取两路 Top-K，并在应用层执行 RRF，避免直接比较不同检索引擎的原始分数。
 - 任一检索引擎不可用时允许降级到另一条检索链路；全部不可用时继续使用现有 FAQ 关键词兜底和人工接管策略。
 - 当前阶段不引入 Redis、RocketMQ、Milvus、Nacos、WebSocket 或独立 Rerank 模型。
+
+混合检索返回来源：
+
+- `hybrid-rrf-v1`：Elasticsearch 与 pgvector 都召回同一 FAQ。
+- `elasticsearch-bm25-v1`：仅关键词检索命中。
+- `pgvector-cosine-v1`：仅语义检索命中。
+- `faq-keyword-v1`：混合检索无候选或不可用，回退现有 MySQL/内置 FAQ。
 
 ## FAQ 查询
 
@@ -162,6 +169,36 @@ Content-Type: application/json; charset=utf-8
 - `DRAFT`：草稿，不参与用户查询。
 - `ACTIVE`：启用，参与用户查询。
 - `DISABLED`：停用，不参与用户查询。
+
+### 重建混合检索索引
+
+```http
+POST /api/knowledge/faq/index/rebuild
+```
+
+接口从 MySQL `knowledge_faq` 读取全部 FAQ，先清空 ES/pgvector 检索副本，再逐条重建。MySQL 数据不会被修改。
+
+```json
+{
+  "code": "0000",
+  "message": "success",
+  "data": {
+    "enabled": true,
+    "documentCount": 7,
+    "successCount": 16,
+    "failureCount": 0,
+    "operations": [
+      {
+        "writer": "elasticsearch",
+        "success": true,
+        "message": "reset"
+      }
+    ]
+  }
+}
+```
+
+`enabled=false` 表示当前仍是 `keyword` 模式。`failureCount>0` 表示部分检索副本失败，应查看 `operations` 并在依赖恢复后重新执行。
 
 ## Agent Core 路由
 

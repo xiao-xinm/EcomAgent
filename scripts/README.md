@@ -82,3 +82,21 @@ cd D:\NewProject\EcomAgent
 ```powershell
 .\scripts\check-local-stack.ps1 -SkipAppH5
 ```
+
+## smoke-knowledge-hybrid.ps1
+
+`smoke-knowledge-hybrid.ps1` 用于 Phase 5 混合检索验收。执行前必须：
+
+- 在 `smartcs_knowledge` PostgreSQL 数据库执行 `infra/postgres/01-knowledge-vector-schema.sql`。
+- Knowledge IDEA 配置已设置 ES、pgvector、`DASHSCOPE_API_KEY`。
+- `SMARTCS_RETRIEVAL_MODE=hybrid`。
+- Knowledge 服务运行在 `8084`。
+
+执行：
+
+```powershell
+cd D:\NewProject\EcomAgent
+.\scripts\smoke-knowledge-hybrid.ps1
+```
+
+脚本会执行全量索引重建，并验证精确问题双路命中和语义改写问题的向量召回来源。

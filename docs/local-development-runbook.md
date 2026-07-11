@@ -109,6 +109,25 @@ Test-NetConnection <vm-ip> -Port 5432
 Test-NetConnection <vm-ip> -Port 9200
 ```
 
+首次启用混合检索前，在 PostgreSQL `smartcs_knowledge` 数据库执行：
+
+```text
+infra/postgres/01-knowledge-vector-schema.sql
+```
+
+确认表结构完成后，将 Knowledge 的 IDEA 环境变量切换为：
+
+```text
+SMARTCS_RETRIEVAL_MODE=hybrid
+```
+
+重启 Knowledge，先调用全量重建，再运行烟测：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8084/api/knowledge/faq/index/rebuild
+.\scripts\smoke-knowledge-hybrid.ps1
+```
+
 ## 5. 启动前端
 
 ```powershell
