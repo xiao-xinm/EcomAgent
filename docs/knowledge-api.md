@@ -2,15 +2,25 @@
 
 本文档记录 `smartcs-knowledge` 当前阶段的 FAQ 查询与 FAQ 管理能力。
 
-当前目标是把 `Agent Core -> Knowledge -> 用户回复` 的 FAQ 链路从硬编码升级为可维护数据，不引入 Milvus、ES、Redis、RocketMQ 或 WebSocket。
+当前实现仍是 MySQL FAQ 关键词匹配。下一阶段保持 API 契约不变，将检索实现升级为 Elasticsearch 中文关键词/BM25 召回与 pgvector 语义召回，并在 Knowledge 服务内使用 RRF 融合排名。
 
 ## 服务信息
 
 - 服务名：`smartcs-knowledge`
 - 默认端口：`8084`
 - 健康检查：`GET http://localhost:8084/api/health`
-- 本地依赖：MySQL
+- 当前关键词链路依赖：MySQL
+- 混合检索依赖：PostgreSQL + pgvector、Elasticsearch + `analysis-smartcn`、DashScope Embedding
 - 初始化脚本：`infra/sql/09-knowledge-faq-management.sql`
+
+## 混合检索边界
+
+- MySQL `knowledge_faq` 是 FAQ 权威数据源。
+- Elasticsearch 保存可重建的关键词检索文档，负责中文分词、BM25 和字段过滤。
+- pgvector 保存可重建的 1024 维语义向量，Embedding 模型固定为 `text-embedding-v4`。
+- Knowledge 服务分别获取两路 Top-K，并在应用层执行 RRF，避免直接比较不同检索引擎的原始分数。
+- 任一检索引擎不可用时允许降级到另一条检索链路；全部不可用时继续使用现有 FAQ 关键词兜底和人工接管策略。
+- 当前阶段不引入 Redis、RocketMQ、Milvus、Nacos、WebSocket 或独立 Rerank 模型。
 
 ## FAQ 查询
 

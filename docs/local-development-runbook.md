@@ -1,6 +1,6 @@
 # SmartCS 本地启动与排障 Runbook
 
-本文档用于本地联调 SmartCS 最小闭环。默认开发方式是：MySQL 可由本机、虚拟机 Docker 或 `infra/docker/compose.yml` 提供；后端服务用 IDEA 启动；前端用 npm workspace 启动。
+本文档用于本地联调 SmartCS。默认开发方式是：MySQL 可由本机、虚拟机 Docker 或 `infra/docker/compose.yml` 提供；Phase 5 混合检索使用虚拟机中的 PostgreSQL + pgvector 和 Elasticsearch；后端服务用 IDEA 启动；前端用 npm workspace 启动。
 
 ## 1. 本地依赖
 
@@ -12,9 +12,15 @@
 
 可选：
 
-- Docker Desktop 或 Docker CLI：仅用于启动本地 MySQL。
+- Docker Desktop 或 Docker CLI：用于启动本地或虚拟机中间件。
 
-当前阶段不需要 Redis、RocketMQ、Milvus、Elasticsearch、Prometheus、Grafana。
+Phase 5 混合检索还需要：
+
+- PostgreSQL 16 + pgvector 0.8.x
+- Elasticsearch 8.x + `analysis-smartcn`
+- DashScope `text-embedding-v4`
+
+当前仍不需要 Redis、RocketMQ、Milvus、Prometheus、Grafana。
 
 ## 2. 启动 MySQL
 
@@ -80,6 +86,28 @@ SMARTCS_DB_PASSWORD=root
 ```
 
 如 MySQL 不在本机，修改 IDEA Run Configuration 的 `SMARTCS_DB_URL`。
+
+Knowledge 混合检索后续使用以下环境变量。密码和 API Key 只能配置在 IDEA、系统环境变量或未提交的本地配置中：
+
+```text
+SMARTCS_VECTOR_DB_URL=jdbc:postgresql://192.168.10.16:5432/smartcs_knowledge
+SMARTCS_VECTOR_DB_USERNAME=postgres
+SMARTCS_VECTOR_DB_PASSWORD=<local-secret>
+SMARTCS_ES_URL=http://192.168.10.16:9200
+SMARTCS_ES_USERNAME=<local-username>
+SMARTCS_ES_PASSWORD=<local-secret>
+DASHSCOPE_API_KEY=<local-secret>
+SMARTCS_EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+SMARTCS_EMBEDDING_MODEL=text-embedding-v4
+SMARTCS_EMBEDDING_DIMENSIONS=1024
+```
+
+虚拟机端口检查：
+
+```powershell
+Test-NetConnection 192.168.10.16 -Port 5432
+Test-NetConnection 192.168.10.16 -Port 9200
+```
 
 ## 5. 启动前端
 

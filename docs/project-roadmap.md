@@ -8,7 +8,7 @@
 - 所有任务按小步 PR 推进，每个 PR 只解决一个清晰目标。
 - 涉及接口、状态枚举、数据库字段、事件协议时，必须先更新或确认文档契约，再实现代码。
 - 不根据猜测补业务字段，不为了前端临时需要倒推后端接口。
-- 新增 Redis、RocketMQ、WebSocket、Milvus、ES 等中间件前，必须先说明用途、替代方案和本地启动要求，并获得用户确认。
+- 新增 Redis、RocketMQ、WebSocket 等中间件前，必须先说明用途、替代方案和本地启动要求，并获得用户确认；Phase 5 已确认使用 PostgreSQL + pgvector 和 Elasticsearch。
 - 每轮任务完成后，应同步更新相关 API 文档、验收清单或本文档状态。
 
 ## 2. 标准开发流程
@@ -42,11 +42,12 @@
 | `frontend/workstation` | 已具备坐席工作台最小闭环和 Token Provider 骨架 |
 | `docs/e2e-acceptance-checklist.md` | 已沉淀最小闭环验收清单 |
 
-当前仍保持轻量本地架构：
+当前基础链路仍保持轻量本地架构：
 
 - 使用 MySQL。
 - 用户端消息同步使用短轮询。
-- 暂不强制启用 Redis、RocketMQ、WebSocket、Milvus、ES。
+- 非知识检索链路暂不强制启用 Redis、RocketMQ、WebSocket。
+- Phase 5 混合检索环境已确认：PostgreSQL 16 + pgvector 0.8.2、Elasticsearch 8.15.0 + `analysis-smartcn`、DashScope `text-embedding-v4`。
 - 退款、换货等敏感业务不自动执行，只走人工审核或人工接管。
 
 ## 4. 总体阶段计划
@@ -183,7 +184,9 @@
 2. 增加 FAQ 管理接口或后台占位。
 3. Agent Core 对知识类问题返回来源和置信度。
 4. 增加未命中策略：低置信度转人工或提示换问法。
-5. 再评估向量检索和 RAG。
+5. 使用 Elasticsearch BM25 与 pgvector 语义检索完成双路召回。
+6. 在 Knowledge 服务内使用 RRF 融合两路排名，保留低置信度人工兜底。
+7. 建立 MySQL FAQ 到两类检索索引的可重建同步机制和验收集。
 
 当前进展：
 
@@ -192,11 +195,15 @@
 - FAQ 查询链路保持 `POST /api/knowledge/faq/query` 不变，优先读 MySQL，表未初始化或无可用数据时回退到内置 FAQ。
 - Agent Core 已对 FAQ 未命中或低置信度结果返回兜底 metadata，并提供 `REQUEST_HUMAN` 快捷动作创建人工接管工单。
 - 坐席工作台已新增 FAQ 管理页面，支持列表查询、新增、编辑、启用和停用，复用现有 Knowledge FAQ 管理接口。
+- 已确认混合检索架构：MySQL 是 FAQ 权威数据源，Elasticsearch 负责中文关键词/BM25 召回，pgvector 负责语义召回，Knowledge 服务执行应用层 RRF 融合。
+- 已确认本地中间件版本：PostgreSQL 16 + pgvector 0.8.2、Elasticsearch 8.15.0；Elasticsearch 已启用安全认证并安装 `analysis-smartcn`。
+- Embedding 使用 DashScope `text-embedding-v4`、1024 维，密钥沿用环境变量 `DASHSCOPE_API_KEY`。
 
 中间件要求：
 
-- FAQ 管理阶段只需要 MySQL。
-- RAG 阶段可能需要 Milvus、ES 或其他向量检索服务，必须提前评估并确认。
+- FAQ 管理和现有关键词兜底仍只需要 MySQL。
+- 混合检索阶段需要 PostgreSQL + pgvector、Elasticsearch 和 DashScope Embedding。
+- Redis、RocketMQ、Nacos、WebSocket 和独立 Rerank 模型不属于本阶段依赖。
 
 ### Phase 6. 通知服务增强
 
@@ -341,7 +348,7 @@
 
 中间件要求：
 
-- Docker Compose 当前只启用 MySQL；Redis、RocketMQ、Milvus、ES 暂不引入。
+- 项目内 Docker Compose 当前只启用 MySQL；Phase 5 使用用户虚拟机中已有的 pgvector 与 Elasticsearch，Redis、RocketMQ 暂不接入业务链路。
 - 监控阶段再评估 Prometheus、Grafana、OpenTelemetry。
 
 ## 5. 后续任务优先队列
@@ -350,7 +357,7 @@
 
 1. Phase 8：登录鉴权与权限，优先完成身份上下文和开发兼容模式。
 2. Phase 9：观测、运维与部署，补齐启动、健康检查和本地部署说明。
-3. Phase 5：知识库能力增强，后续再评估 RAG 和向量检索。
+3. Phase 5：实现 Elasticsearch + pgvector 双路召回、应用层 RRF 融合和索引重建能力。
 4. Phase 6：通知服务增强，后续再评估自动重试 worker 和 MQ 异步化。
 5. Phase 7：实时消息升级，后续按需从用户端 SSE 扩展到坐席端实时提醒。
 

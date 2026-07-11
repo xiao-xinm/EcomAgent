@@ -32,7 +32,7 @@
 │   电商业务API │ 人工工作台 │ 知识库/RAG │ 通知服务        │
 ├─────────────────────────────────────────────────────────┤
 │               基础设施层 (Infrastructure)                 │
-│   Redis │ Milvus │ ES │ RocketMQ │ Prometheus+Grafana    │
+│ Redis │ PostgreSQL+pgvector │ ES │ RocketMQ │ 监控组件    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -59,12 +59,12 @@
 | **前端（用户端）** | React / Vue 3 + TypeScript、WebSocket (SockJS)、TailwindCSS |
 | **前端（坐席工作台）** | React 18 + Ant Design Pro、WebSocket 实时推送 |
 | **Agent 核心** | Java 17 / Spring Boot 3、Spring Statemachine、LLM 适配器 / 自研 Agent 框架 |
-| **NLU / LLM** | Qwen-Max（主） / GPT-4o（备）、text2vec-large-chinese（Embedding） |
+| **NLU / LLM** | Qwen-Max（主） / GPT-4o（备）、DashScope `text-embedding-v4`（Embedding） |
 | **后端服务** | Java 17 / Spring Boot 3、MyBatis-Plus、Spring Security + JWT |
 | **消息中间件** | RocketMQ 5.x |
 | **缓存 & 状态** | Redis 7.x Cluster |
-| **向量库** | Milvus 2.x |
-| **搜索引擎** | Elasticsearch 8.x |
+| **向量库** | PostgreSQL 16 + pgvector 0.8.x |
+| **搜索引擎** | Elasticsearch 8.x + `analysis-smartcn` |
 | **数据库** | MySQL 8.x |
 | **监控** | Prometheus + Grafana、SkyWalking（链路追踪） |
 | **容器 & 部署** | Docker、Kubernetes、Helm |
@@ -120,7 +120,8 @@ smartcs-agent/
 - JDK 17+
 - Node.js 18+
 - Docker & Docker Compose
-- MySQL 8.x（本地开发可用 Docker Compose 启动；Redis、RocketMQ、Milvus、ES 当前阶段不强制启用）
+- MySQL 8.x（核心业务数据）
+- Phase 5 混合检索需要 PostgreSQL 16 + pgvector、Elasticsearch 8.x 和 DashScope Embedding；Redis、RocketMQ 当前不强制启用
 
 ### 1. 克隆项目
 
