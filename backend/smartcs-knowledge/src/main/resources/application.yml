@@ -34,6 +34,7 @@ smartcs:
       mode: ${SMARTCS_RETRIEVAL_MODE:keyword}
       elasticsearch-top-k: ${SMARTCS_RETRIEVAL_ES_TOP_K:10}
       vector-top-k: ${SMARTCS_RETRIEVAL_VECTOR_TOP_K:10}
+      vector-min-similarity: ${SMARTCS_RETRIEVAL_VECTOR_MIN_SIMILARITY:0.55}
       final-top-k: ${SMARTCS_RETRIEVAL_FINAL_TOP_K:5}
       rrf-k: ${SMARTCS_RETRIEVAL_RRF_K:60}
     vector:
