@@ -9,6 +9,8 @@ import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
+import com.smartcs.agent.knowledge.retrieval.HybridKnowledgeRetriever;
+import com.smartcs.agent.knowledge.retrieval.HybridKnowledgeRetriever.HybridRetrievalResult;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -17,9 +19,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -27,8 +31,8 @@ import org.springframework.stereotype.Service;
 /**
  * FAQ 知识服务。
  *
- * <p>当前阶段仍使用关键词匹配，不引入向量库或 RAG。查询链路优先读取 MySQL 中的 ACTIVE FAQ，
- * 如果表还没有初始化或暂时查不到数据，则回退到内置 FAQ，保证用户聊天主链路稳定。
+ * <p>hybrid 模式优先使用 Elasticsearch + pgvector 融合结果；无候选或任一依赖异常时，
+ * 继续读取 MySQL ACTIVE FAQ，最后回退内置 FAQ，保证用户聊天主链路稳定。
  */
 @Service
 public class FaqKnowledgeService {
@@ -84,14 +88,39 @@ public class FaqKnowledgeService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final HybridKnowledgeRetriever hybridKnowledgeRetriever;
 
     public FaqKnowledgeService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+        this(jdbcTemplate, objectMapper, null);
+    }
+
+    @Autowired
+    public FaqKnowledgeService(
+            JdbcTemplate jdbcTemplate,
+            ObjectMapper objectMapper,
+            HybridKnowledgeRetriever hybridKnowledgeRetriever) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.hybridKnowledgeRetriever = hybridKnowledgeRetriever;
     }
 
     public FaqQueryResponse query(FaqQueryRequest request) {
         String question = textOr(request.question(), "");
+        Optional<HybridRetrievalResult> hybridResult = hybridKnowledgeRetriever == null
+                ? Optional.empty()
+                : hybridKnowledgeRetriever.retrieve(question);
+        if (hybridResult.isPresent()) {
+            HybridRetrievalResult result = hybridResult.orElseThrow();
+            return new FaqQueryResponse(
+                    result.candidate().faqId(),
+                    question,
+                    result.candidate().answer(),
+                    true,
+                    result.confidence(),
+                    List.of(),
+                    result.source(),
+                    Instant.now());
+        }
         String normalizedQuestion = normalize(question);
         List<FaqEntry> faqEntries = activeFaqEntries();
         FaqMatch bestMatch = faqEntries.stream()

@@ -37,6 +37,7 @@ smartcs:
       vector-min-similarity: ${SMARTCS_RETRIEVAL_VECTOR_MIN_SIMILARITY:0.55}
       final-top-k: ${SMARTCS_RETRIEVAL_FINAL_TOP_K:5}
       rrf-k: ${SMARTCS_RETRIEVAL_RRF_K:60}
+      keyword-only-confidence: ${SMARTCS_RETRIEVAL_KEYWORD_ONLY_CONFIDENCE:0.68}
     vector:
       datasource:
         url: ${SMARTCS_VECTOR_DB_URL:jdbc:postgresql://localhost:5432/smartcs_knowledge}
