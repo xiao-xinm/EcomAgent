@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /** notification_event 的待投递查询和状态回写仓储。 */
 @Repository
@@ -31,17 +32,21 @@ public class NotificationRetryRepository {
         this.objectMapper = objectMapper;
     }
 
-    public List<NotificationRetryEvent> findDue(int batchSize, int maxAttempts) {
-        if (batchSize <= 0 || maxAttempts <= 0) {
-            throw new IllegalArgumentException("batchSize 和 maxAttempts 必须大于 0");
-        }
-        return jdbcTemplate.query(
+    @Transactional
+    public List<NotificationRetryEvent> claimDue(
+            String workerId,
+            int batchSize,
+            int maxAttempts,
+            long leaseDurationMs) {
+        validateClaimArguments(workerId, batchSize, maxAttempts, leaseDurationMs);
+        List<NotificationRetryEvent> events = jdbcTemplate.query(
                 """
                 SELECT event_id, trace_id, event_type, recipient_user_id, session_id,
                        ticket_id, operator_id, channel, title, content, payload,
                        retry_count, occurred_at
                 FROM notification_event
                 WHERE retry_count < ?
+                  AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
                   AND (
                     status = 'ACCEPTED'
                     OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= NOW(3)))
@@ -49,13 +54,34 @@ public class NotificationRetryRepository {
                 ORDER BY CASE status WHEN 'ACCEPTED' THEN 0 ELSE 1 END,
                          COALESCE(next_retry_at, accepted_at), accepted_at, event_id
                 LIMIT ?
+                FOR UPDATE SKIP LOCKED
                 """,
                 (rs, rowNum) -> mapEvent(rs),
                 maxAttempts,
                 batchSize);
+        long leaseDurationMicros = Math.multiplyExact(leaseDurationMs, 1000L);
+        for (NotificationRetryEvent event : events) {
+            int claimed = jdbcTemplate.update(
+                    """
+                    UPDATE notification_event
+                    SET delivery_owner = ?,
+                        delivery_lease_until = TIMESTAMPADD(MICROSECOND, ?, NOW(3)),
+                        updated_at = NOW(3)
+                    WHERE event_id = ?
+                      AND status IN ('ACCEPTED', 'FAILED')
+                      AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
+                    """,
+                    workerId,
+                    leaseDurationMicros,
+                    event.eventId());
+            if (claimed != 1) {
+                throw new IllegalStateException("通知事件租约领取失败: " + event.eventId());
+            }
+        }
+        return events;
     }
 
-    public int markDelivered(String eventId) {
+    public int markDelivered(String eventId, String workerId) {
         return jdbcTemplate.update(
                 """
                 UPDATE notification_event
@@ -63,14 +89,18 @@ public class NotificationRetryRepository {
                     last_error = NULL,
                     next_retry_at = NULL,
                     delivered_at = NOW(3),
+                    delivery_owner = NULL,
+                    delivery_lease_until = NULL,
                     updated_at = NOW(3)
                 WHERE event_id = ?
                   AND status IN ('ACCEPTED', 'FAILED')
+                  AND delivery_owner = ?
                 """,
-                eventId);
+                eventId,
+                workerId);
     }
 
-    public int markFailed(String eventId, String errorMessage, Instant nextRetryAt) {
+    public int markFailed(String eventId, String workerId, String errorMessage, Instant nextRetryAt) {
         return jdbcTemplate.update(
                 """
                 UPDATE notification_event
@@ -79,13 +109,34 @@ public class NotificationRetryRepository {
                     last_error = ?,
                     next_retry_at = ?,
                     delivered_at = NULL,
+                    delivery_owner = NULL,
+                    delivery_lease_until = NULL,
                     updated_at = NOW(3)
                 WHERE event_id = ?
                   AND status IN ('ACCEPTED', 'FAILED')
+                  AND delivery_owner = ?
                 """,
                 normalizeError(errorMessage),
                 nextRetryAt == null ? null : Timestamp.from(nextRetryAt),
-                eventId);
+                eventId,
+                workerId);
+    }
+
+    private void validateClaimArguments(
+            String workerId,
+            int batchSize,
+            int maxAttempts,
+            long leaseDurationMs) {
+        if (workerId == null || workerId.isBlank() || workerId.length() > 64) {
+            throw new IllegalArgumentException("workerId 必须为 1 至 64 个字符");
+        }
+        if (batchSize <= 0 || maxAttempts <= 0) {
+            throw new IllegalArgumentException("batchSize 和 maxAttempts 必须大于 0");
+        }
+        if (leaseDurationMs < 1000) {
+            throw new IllegalArgumentException("leaseDurationMs 不能小于 1000");
+        }
+        Math.multiplyExact(leaseDurationMs, 1000L);
     }
 
     private NotificationRetryEvent mapEvent(ResultSet rs) throws SQLException {

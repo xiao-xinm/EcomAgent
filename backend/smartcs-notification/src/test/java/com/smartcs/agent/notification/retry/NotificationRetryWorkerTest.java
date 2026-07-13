@@ -26,13 +26,14 @@ class NotificationRetryWorkerTest {
         NotificationRetryRepository repository = mock(NotificationRetryRepository.class);
         NotificationDeliveryChannel channel = channel("USER_SESSION");
         NotificationRetryEvent event = event(0, "USER_SESSION");
-        when(repository.findDue(20, 5)).thenReturn(List.of(event));
+        when(repository.claimDue("worker-test", 20, 5, 120000)).thenReturn(List.of(event));
+        when(repository.markDelivered("ntf_test", "worker-test")).thenReturn(1);
         NotificationRetryWorker worker = worker(repository, List.of(channel), 5);
 
         worker.runOnce();
 
         verify(channel).deliver(any(NotificationDeliveryCommand.class));
-        verify(repository).markDelivered("ntf_test");
+        verify(repository).markDelivered("ntf_test", "worker-test");
     }
 
     @Test
@@ -42,23 +43,32 @@ class NotificationRetryWorkerTest {
         doThrow(new IllegalStateException("channel unavailable"))
                 .when(channel)
                 .deliver(any(NotificationDeliveryCommand.class));
-        when(repository.findDue(20, 5)).thenReturn(List.of(event(0, "USER_SESSION")));
+        when(repository.claimDue("worker-test", 20, 5, 120000))
+                .thenReturn(List.of(event(0, "USER_SESSION")));
+        when(repository.markFailed(
+                        "ntf_test", "worker-test", "channel unavailable", NOW.plusSeconds(60)))
+                .thenReturn(1);
         NotificationRetryWorker worker = worker(repository, List.of(channel), 5);
 
         worker.runOnce();
 
-        verify(repository).markFailed("ntf_test", "channel unavailable", NOW.plusSeconds(60));
+        verify(repository).markFailed(
+                "ntf_test", "worker-test", "channel unavailable", NOW.plusSeconds(60));
     }
 
     @Test
     void unsupportedChannelDoesNotPretendDeliverySucceeded() {
         NotificationRetryRepository repository = mock(NotificationRetryRepository.class);
-        when(repository.findDue(20, 5)).thenReturn(List.of(event(0, "SMS")));
+        when(repository.claimDue("worker-test", 20, 5, 120000)).thenReturn(List.of(event(0, "SMS")));
+        when(repository.markFailed(
+                        "ntf_test", "worker-test", "UNSUPPORTED_CHANNEL: SMS", NOW.plusSeconds(60)))
+                .thenReturn(1);
         NotificationRetryWorker worker = worker(repository, List.of(channel("USER_SESSION")), 5);
 
         worker.runOnce();
 
-        verify(repository).markFailed("ntf_test", "UNSUPPORTED_CHANNEL: SMS", NOW.plusSeconds(60));
+        verify(repository).markFailed(
+                "ntf_test", "worker-test", "UNSUPPORTED_CHANNEL: SMS", NOW.plusSeconds(60));
     }
 
     @Test
@@ -68,12 +78,15 @@ class NotificationRetryWorkerTest {
         doThrow(new IllegalStateException("still unavailable"))
                 .when(channel)
                 .deliver(any(NotificationDeliveryCommand.class));
-        when(repository.findDue(20, 5)).thenReturn(List.of(event(4, "USER_SESSION")));
+        when(repository.claimDue("worker-test", 20, 5, 120000))
+                .thenReturn(List.of(event(4, "USER_SESSION")));
+        when(repository.markFailed("ntf_test", "worker-test", "still unavailable", null))
+                .thenReturn(1);
         NotificationRetryWorker worker = worker(repository, List.of(channel), 5);
 
         worker.runOnce();
 
-        verify(repository).markFailed("ntf_test", "still unavailable", null);
+        verify(repository).markFailed("ntf_test", "worker-test", "still unavailable", null);
     }
 
     @Test
@@ -107,6 +120,8 @@ class NotificationRetryWorkerTest {
                 new NotificationRetryPolicy(),
                 20,
                 maxAttempts,
+                120000,
+                "worker-test",
                 CLOCK);
     }
 

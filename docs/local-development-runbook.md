@@ -63,6 +63,7 @@ mysql -u root -p smartcs_agent < 09-knowledge-faq-management.sql
 mysql -u root -p smartcs_agent < 10-notification-event-store.sql
 mysql -u root -p smartcs_agent < 11-notification-delivery-status.sql
 mysql -u root -p smartcs_agent < 12-workbench-notification-outbox.sql
+mysql -u root -p smartcs_agent < 13-notification-delivery-lease.sql
 ```
 
 ## 4. 启动后端服务
@@ -93,7 +94,11 @@ Notification 的内部重试 worker 和 `USER_SESSION` 通道默认关闭，普�
 ```text
 SMARTCS_NOTIFICATION_RETRY_ENABLED=true
 SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=true
+SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS=120000
 ```
+
+启用 Notification worker 前必须执行 13 号迁移。多实例部署时每个进程可以设置不同的
+`SMARTCS_NOTIFICATION_RETRY_WORKER_ID`；留空会自动生成。租约应长于单次通道调用的最大耗时。
 
 Workbench 通知 outbox 也默认关闭，关闭时保持原有同步 HTTP 辅助链路。需要验证事务 outbox 时，先执行 `12-workbench-notification-outbox.sql`，同时启动 Workbench 与 Notification，再设置：
 

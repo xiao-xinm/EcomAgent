@@ -239,7 +239,9 @@
 - 已新增 `POST /api/notifications/events/{eventId}/delivery-result`，用于后续投递 worker 或 MQ 消费器回写 `DELIVERED` / `FAILED`。
 - Workbench 已将审批结论和接管状态类用户侧事件收口到统一私有边界，业务动作不再重复散落“写用户消息 + 投递通知”的相邻组合。
 - 已完成 MQ 异步化评估文档：`docs/notification-mq-evaluation.md`。当前结论是暂不引入 RocketMQ，继续使用 MySQL 可追踪事件，后续自动重试优先评估 Notification 内部定时 worker。
-- 已实现默认关闭的 Notification 单实例定时投递框架：支持 `ACCEPTED` 首次投递、到期 `FAILED` 重试、1/5/15/30 分钟退避、最大尝试次数和可插拔 `NotificationDeliveryChannel`。
+- 已实现默认关闭的 Notification 定时投递框架：支持 `ACCEPTED` 首次投递、到期 `FAILED` 重试、1/5/15/30 分钟退避、最大尝试次数和可插拔 `NotificationDeliveryChannel`。
+- 已新增 `infra/sql/13-notification-delivery-lease.sql`，Notification worker 使用 `FOR UPDATE SKIP LOCKED`、实例 owner 和过期租约支持多实例安全领取。
+- 2026-07-13 已使用两个 Notification 进程共享 MySQL 验证同一事件只由一个实例完成投递，租约过期事件可恢复领取。
 - 已新增默认关闭的幂等 `USER_SESSION` 通道；短信、邮件和 APP Push 仍未接入。
 - worker 显式开启时必须至少注册一个投递通道，否则应用启动失败，不会误消费待处理事件。
 - 已固化用户会话消息解耦迁移顺序：先做 Workbench 事务 outbox 和 `eventId` 幂等，再接 `USER_SESSION` 通道，最后灰度关闭 Workbench 直接写消息。

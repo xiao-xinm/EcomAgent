@@ -16,6 +16,7 @@ MQ 是否引入、何时引入以及 RocketMQ 候选设计见 [notification-mq-e
   - `infra/sql/10-notification-event-store.sql`
   - `infra/sql/11-notification-delivery-status.sql`
   - 可选 Workbench outbox：`infra/sql/12-workbench-notification-outbox.sql`
+  - Notification worker 租约：`infra/sql/13-notification-delivery-lease.sql`
 
 ## 接收通知事件
 
@@ -181,7 +182,7 @@ Content-Type: application/json; charset=utf-8
 - `status` 只支持 `DELIVERED` 和 `FAILED`。
 - `FAILED` 会让 `retryCount + 1`，记录 `lastError` 和 `nextRetryAt`。
 - `DELIVERED` 会清空 `lastError` 和 `nextRetryAt`，并记录 `deliveredAt`。
-- 这只是状态记录，不会自动执行真实重试；真实重试调度后续再评估是否接入 RocketMQ 或定时任务。
+- 该接口只负责显式状态回写；启用内部重试 worker 后，worker 也会直接维护相同状态字段。
 
 ## Workbench 投递点
 
@@ -234,12 +235,16 @@ SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS=30000
 SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
 SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
+SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS=120000
+SMARTCS_NOTIFICATION_RETRY_WORKER_ID=
 ```
 
 执行规则：
 
 - 处理 `ACCEPTED` 事件的首次投递，以及 `next_retry_at <= NOW(3)` 的 `FAILED` 事件。
 - 仅选择 `retry_count < maxAttempts` 的事件，每轮最多处理 `batchSize` 条。
+- 通过事务内 `FOR UPDATE SKIP LOCKED` 领取事件，并写入 `delivery_owner / delivery_lease_until`。
+- 成功或失败回写必须匹配领取 worker；进程异常退出后，其他实例可在租约过期后重新领取。
 - 真实投递通道通过 `NotificationDeliveryChannel` 扩展，并按 `channel` 精确匹配。
 - 显式开启 worker 但没有注册任何投递通道时，应用会启动失败，不会消费待处理事件。
 - 只开启 `USER_SESSION` 通道但未开启 worker 时，应用同样会启动失败。
@@ -247,7 +252,7 @@ SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 - 投递成功后状态变为 `DELIVERED`。
 - 投递失败后增加 `retryCount`，默认按 1、5、15、30 分钟退避。
 - 达到最大尝试次数后保留 `FAILED`，清空 `nextRetryAt`，等待人工处理。
-- 当前实现按单实例 worker 运行；部署多实例或需要高吞吐时，应重新评估数据库抢占或 RocketMQ。
+- Notification worker 已支持共享 MySQL 的多实例领取；Workbench outbox worker 目前仍按单实例运行。
 
 `USER_SESSION` 通道按事件 payload 执行：
 

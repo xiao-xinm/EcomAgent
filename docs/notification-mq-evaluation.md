@@ -57,7 +57,7 @@ Workbench 操作成功
 - 第 3 次失败：15 分钟后重试。
 - 第 4 次及以后：30 分钟后重试，或进入人工排查。
 
-当前已提供默认关闭的单实例自动 worker 框架、可插拔 `NotificationDeliveryChannel`，以及幂等 `USER_SESSION` 通道。通道和 worker 必须成组开启。
+当前已提供默认关闭的自动 worker 框架、可插拔 `NotificationDeliveryChannel`，以及幂等 `USER_SESSION` 通道。Notification worker 使用 MySQL 租约和 `SKIP LOCKED` 支持多实例安全领取；通道和 worker 必须成组开启。
 
 显式开启 worker 时必须至少注册一个真实投递通道，否则 Notification 会启动失败，不会领取待处理事件。
 
@@ -69,6 +69,8 @@ SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS=30000
 SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
 SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
+SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS=120000
+SMARTCS_NOTIFICATION_RETRY_WORKER_ID=
 ```
 
 ## 4. 用户会话消息解耦迁移顺序
@@ -98,7 +100,7 @@ SMARTCS_NOTIFICATION_RETRY_ENABLED=true
 SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=true
 ```
 
-这条迁移路径仍只需要 MySQL。只有在多实例抢占、吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
+这条迁移路径仍只需要 MySQL。Notification 消费侧已解决基础多实例抢占；Workbench outbox 仍需完成同类租约改造。只有在吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
 
 ## 5. 引入 RocketMQ 的触发条件
 

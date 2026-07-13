@@ -39,3 +39,6 @@ smartcs:
       fixed-delay-ms: ${SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS:30000}
       batch-size: ${SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE:20}
       max-attempts: ${SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS:5}
+      # 多实例通过 MySQL 租约避免重复领取；租约应长于单次通道调用超时。
+      lease-duration-ms: ${SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS:120000}
+      worker-id: ${SMARTCS_NOTIFICATION_RETRY_WORKER_ID:}

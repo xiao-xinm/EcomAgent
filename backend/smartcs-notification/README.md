@@ -7,7 +7,7 @@
 - Workbench 审批、人工接管和人工消息事件接收与 MySQL 落库。
 - 通知事件分页查询和投递结果回写。
 - 失败原因、重试次数、下次重试时间和投递完成时间记录。
-- 默认关闭的单实例定时投递 worker。
+- 默认关闭、支持 MySQL 租约多实例领取的定时投递 worker。
 - 通过 `NotificationDeliveryChannel` 扩展真实投递渠道。
 - 默认关闭的幂等 `USER_SESSION` 通道，可使用 `eventId` 派生固定消息 ID 写入 `cs_message`。
 
@@ -17,6 +17,10 @@
 SMARTCS_NOTIFICATION_RETRY_ENABLED=true
 SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=true
 ```
+
+启用 worker 前必须先执行 `infra/sql/13-notification-delivery-lease.sql`。默认租约为 120 秒，可通过
+`SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS` 调整；该值应长于单次投递通道调用的最大耗时。
+多实例可选配置不同的 `SMARTCS_NOTIFICATION_RETRY_WORKER_ID`，未配置时每个进程自动生成唯一 ID。
 
 只开启通道而未开启 worker 时应用会拒绝启动。历史事件及 `DIRECT` 事件只会被确认交付，不会重复写入用户消息。
 

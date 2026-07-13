@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,8 +22,9 @@ class NotificationRetryRepositoryTest {
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
-    void findDueMapsAcceptedAndFailedEventFields() throws Exception {
+    void claimDueLocksAndLeasesAcceptedAndFailedEventFields() throws Exception {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(1);
         when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
                 .thenAnswer(invocation -> {
                     RowMapper mapper = invocation.getArgument(1);
@@ -46,13 +48,14 @@ class NotificationRetryRepositoryTest {
         NotificationRetryRepository repository =
                 new NotificationRetryRepository(jdbcTemplate, new ObjectMapper());
 
-        List<NotificationRetryEvent> events = repository.findDue(20, 5);
+        List<NotificationRetryEvent> events = repository.claimDue("worker-a", 20, 5, 120000);
 
         assertThat(events).hasSize(1);
         assertThat(events.get(0).eventId()).isEqualTo("ntf_test");
         assertThat(events.get(0).payload()).containsEntry("decision", "APPROVED");
         assertThat(events.get(0).toCommand().attempt()).isEqualTo(2);
-        verify(jdbcTemplate).query(contains("next_retry_at <= NOW(3)"), any(RowMapper.class), any(Object[].class));
+        verify(jdbcTemplate).query(contains("FOR UPDATE SKIP LOCKED"), any(RowMapper.class), any(Object[].class));
+        verify(jdbcTemplate).update(contains("delivery_lease_until = TIMESTAMPADD"), any(Object[].class));
     }
 
     @Test
@@ -62,10 +65,15 @@ class NotificationRetryRepositoryTest {
         NotificationRetryRepository repository =
                 new NotificationRetryRepository(jdbcTemplate, new ObjectMapper());
 
-        repository.markDelivered("ntf_test");
-        repository.markFailed("ntf_test", "channel unavailable", Instant.parse("2026-07-13T06:01:00Z"));
+        repository.markDelivered("ntf_test", "worker-a");
+        repository.markFailed(
+                "ntf_test",
+                "worker-a",
+                "channel unavailable",
+                Instant.parse("2026-07-13T06:01:00Z"));
 
         verify(jdbcTemplate).update(contains("status = 'DELIVERED'"), any(Object[].class));
         verify(jdbcTemplate).update(contains("retry_count = retry_count + 1"), any(Object[].class));
+        verify(jdbcTemplate, times(2)).update(contains("delivery_owner = ?"), any(Object[].class));
     }
 }
