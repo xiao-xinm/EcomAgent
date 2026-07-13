@@ -245,7 +245,9 @@
 - 已固化用户会话消息解耦迁移顺序：先做 Workbench 事务 outbox 和 `eventId` 幂等，再接 `USER_SESSION` 通道，最后灰度关闭 Workbench 直接写消息。
 - 已新增 `workbench_notification_outbox` 表、兼容发布器和默认关闭的单实例投递 worker；开启后事件随工单操作事务入队，再异步调用 Notification，失败按有限退避重试。
 - Workbench 事件已补齐 `messageRole` 和 `userMessageDeliveryMode`，Notification 使用 `eventId` 派生稳定 `messageId`；历史与 `DIRECT` 事件不会重复写消息。
-- 默认仍走同步 HTTP 辅助链路并由 Workbench 事务写 `cs_message`。灰度迁移开关和互斥启动保护已完成，下一步执行进程级故障恢复及完整 E2E 验收，再决定是否切换默认值。
+- 已新增 `scripts/smoke-notification-user-session.ps1`，进程级验证正常投递、Notification 中断恢复、固定消息 ID 幂等重放和测试数据清理。
+- 2026-07-13 已完成真实 MySQL 进程联调：Notification 停止期间 Workbench 不直写消息，服务恢复后事件进入 `DELIVERED`，重复重放后用户消息仍只有一条。
+- 默认仍走同步 HTTP 辅助链路并由 Workbench 事务写 `cs_message`。迁移模式已经具备并通过验收，但在生产部署和持续观测方案完成前不切换默认值。
 
 中间件要求：
 

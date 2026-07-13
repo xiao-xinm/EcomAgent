@@ -100,3 +100,31 @@ cd D:\NewProject\EcomAgent
 ```
 
 脚本会执行全量索引重建，并验证精确问题双路命中和语义改写问题的向量召回来源。
+
+## smoke-notification-user-session.ps1
+
+`smoke-notification-user-session.ps1` 用于验证 Workbench outbox 到 Notification `USER_SESSION` 通道的用户消息解耦。执行前需要：
+
+- MySQL 已启动并已执行 `10`、`11`、`12` 号通知 SQL。
+- Workbench 开启 outbox，并关闭用户消息直写。
+- Notification 同时开启重试 worker 和 `USER_SESSION` 通道。
+
+两个服务均已启动时执行完整烟测：
+
+```powershell
+.\scripts\smoke-notification-user-session.ps1
+```
+
+验证服务中断与恢复时，先停止 Notification，保持 Workbench 运行：
+
+```powershell
+.\scripts\smoke-notification-user-session.ps1 -Mode PrepareRecovery
+```
+
+再启动 Notification，并执行：
+
+```powershell
+.\scripts\smoke-notification-user-session.ps1 -Mode VerifyRecovery
+```
+
+脚本覆盖 outbox 持久化、最终投递、消息角色和重复事件幂等。成功后自动清理测试数据；异常中断后可执行 `-Mode Cleanup` 清理状态文件对应的数据。

@@ -110,6 +110,14 @@ SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false
 
 该配置会强制要求 outbox 已开启。建议先启动 Notification，再启动 Workbench；回滚时先将该配置恢复为 `true`，避免出现消息交付空窗。
 
+完整配置启动后，可执行用户会话解耦烟测：
+
+```powershell
+.\scripts\smoke-notification-user-session.ps1
+```
+
+验证 Notification 中断恢复时，先停止 Notification 并执行 `-Mode PrepareRecovery`，再启动 Notification 并执行 `-Mode VerifyRecovery`。脚本会验证 outbox 恢复、最终投递和重复事件幂等，并在成功后清理测试数据。
+
 Knowledge 混合检索后续使用以下环境变量。密码和 API Key 只能配置在 IDEA、系统环境变量或未提交的本地配置中：
 
 ```text

@@ -637,7 +637,7 @@ interface ApprovalDecisionRequest {
 - `approval_task.status` 变为 `APPROVED`
 - `work_order.status` 变为 `APPROVED`
 - 写入审批动作、工单动作和审计日志
-- `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核通过结果
+- 默认模式下由 Workbench 写入一条 `SYSTEM` 用户可见消息；解耦迁移模式下由 Notification `USER_SESSION` 通道幂等写入
 
 ### 5.10 审批驳回
 
@@ -652,7 +652,7 @@ POST /api/workbench/tickets/{ticketId}/approval/reject
 - `approval_task.status` 变为 `REJECTED`
 - `work_order.status` 变为 `REJECTED`
 - 写入审批动作、工单动作和审计日志
-- `cs_message` 新增一条 `SYSTEM` 用户可见消息，用户端通过会话消息列表可看到审核驳回结果
+- 用户端会话新增一条 `SYSTEM` 用户可见消息，写入方由当前用户消息交付模式决定
 
 ### 5.11 要求补充材料
 
@@ -763,7 +763,7 @@ interface TakeoverMessageRequest {
 约束：
 
 - 仅当 `human_takeover.status = IN_PROGRESS` 时允许发送。
-- 消息写入 `cs_message`，角色为 `HUMAN_AGENT`。
+- 消息最终写入 `cs_message`，角色为 `HUMAN_AGENT`；迁移模式下由 Notification 根据稳定 `eventId` 幂等写入。
 - 用户端 H5 / APP H5 继续通过 `GET /api/chat/sessions/{sessionId}/messages` 轮询看到该消息。
 - 同步写入 `work_order_action` 和 `audit_log`，用于坐席操作追踪。
 

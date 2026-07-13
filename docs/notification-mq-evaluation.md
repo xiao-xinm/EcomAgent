@@ -83,7 +83,7 @@ Workbench 当前在本地业务事务中直接写 `cs_message`，随后通过 HT
 4. 完成“事务提交、重复投递、Notification 临时不可用、进程重启”四类集成测试。
 5. 通过配置灰度关闭 Workbench 直接写消息，端到端验收稳定后再移除旧路径。
 
-当前已完成第 1 至 3 步：Workbench outbox 已落地，事件已补齐 `messageRole` 和 `userMessageDeliveryMode`，Notification 已实现基于稳定 `messageId` 的幂等 `USER_SESSION` 通道。历史事件和 `DIRECT` 事件会安全跳过写消息。第 4 步已覆盖重复投递、历史兼容和配置互斥测试，仍需补完整进程级故障恢复联调；第 5 步只提供灰度开关，尚未切换默认值。
+当前已完成第 1 至 4 步：Workbench outbox 已落地，事件已补齐 `messageRole` 和 `userMessageDeliveryMode`，Notification 已实现基于稳定 `messageId` 的幂等 `USER_SESSION` 通道。历史事件和 `DIRECT` 事件会安全跳过写消息。单元测试已覆盖重复投递、历史兼容和配置互斥，`smoke-notification-user-session.ps1` 已验证正常进程链路、Notification 中断恢复和同一事件重放。第 5 步的灰度开关和回滚顺序已具备，但默认值仍保持 Workbench 直写。
 
 灰度配置必须完整成组：
 
