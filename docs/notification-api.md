@@ -40,6 +40,8 @@ Content-Type: application/json; charset=utf-8
   "title": "审批通过通知",
   "content": "你的售后申请已通过人工审核。",
   "payload": {
+    "messageRole": "SYSTEM",
+    "userMessageDeliveryMode": "DIRECT",
     "approvalStatus": "APPROVED",
     "workOrderStatus": "APPROVED"
   },
@@ -208,6 +210,7 @@ smartcs:
   notification:
     enabled: ${SMARTCS_NOTIFICATION_ENABLED:true}
     base-url: ${SMARTCS_NOTIFICATION_BASE_URL:http://localhost:8085}
+    user-message-direct-write-enabled: ${SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED:true}
     outbox:
       enabled: ${SMARTCS_NOTIFICATION_OUTBOX_ENABLED:false}
       fixed-delay-ms: ${SMARTCS_NOTIFICATION_OUTBOX_FIXED_DELAY_MS:30000}
@@ -221,12 +224,13 @@ smartcs:
 
 ## 内部自动重试 worker
 
-Notification 服务提供基于 MySQL 的轻量定时投递框架，默认关闭。当前仓库尚未内置真实站内信、短信、邮件或 APP Push 通道，因此不要仅为了改变事件状态而开启 worker。
+Notification 服务提供基于 MySQL 的轻量定时投递框架，以及默认关闭的幂等 `USER_SESSION` 用户会话通道。短信、邮件和 APP Push 仍未接入。
 
 启用配置：
 
 ```text
 SMARTCS_NOTIFICATION_RETRY_ENABLED=false
+SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS=30000
 SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
 SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
@@ -238,10 +242,33 @@ SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 - 仅选择 `retry_count < maxAttempts` 的事件，每轮最多处理 `batchSize` 条。
 - 真实投递通道通过 `NotificationDeliveryChannel` 扩展，并按 `channel` 精确匹配。
 - 显式开启 worker 但没有注册任何投递通道时，应用会启动失败，不会消费待处理事件。
+- 只开启 `USER_SESSION` 通道但未开启 worker 时，应用同样会启动失败。
 - 通道必须使用 `eventId` 保证幂等，避免进程重启或重复调度造成重复通知。
 - 投递成功后状态变为 `DELIVERED`。
 - 投递失败后增加 `retryCount`，默认按 1、5、15、30 分钟退避。
 - 达到最大尝试次数后保留 `FAILED`，清空 `nextRetryAt`，等待人工处理。
 - 当前实现按单实例 worker 运行；部署多实例或需要高吞吐时，应重新评估数据库抢占或 RocketMQ。
 
-当前 Workbench 仍在本地事务内写用户可见 `cs_message`，Notification 自动重试不会替代这条主链路。
+`USER_SESSION` 通道按事件 payload 执行：
+
+- 缺少 `userMessageDeliveryMode`：视为历史 `DIRECT` 事件，只确认交付，不写消息。
+- `userMessageDeliveryMode=DIRECT`：消息已由 Workbench 写入，只确认交付。
+- `userMessageDeliveryMode=NOTIFICATION`：使用 `eventId` 派生固定 `messageId`，通过主键幂等写入 `cs_message`。
+- `messageRole` 只允许 `SYSTEM` 和 `HUMAN_AGENT`。
+
+默认模式不变。完整迁移验证需同时配置 Workbench：
+
+```text
+SMARTCS_NOTIFICATION_ENABLED=true
+SMARTCS_NOTIFICATION_OUTBOX_ENABLED=true
+SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false
+```
+
+以及 Notification：
+
+```text
+SMARTCS_NOTIFICATION_RETRY_ENABLED=true
+SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=true
+```
+
+建议先启动 Notification，再切换并重启 Workbench。回滚时先恢复 Workbench 直写，再关闭 Notification 通道和 worker。

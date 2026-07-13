@@ -21,6 +21,7 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.WorkOrderView;
 import com.smartcs.agent.workbench.notification.NotificationEventDtos.NotificationEventRequest;
+import com.smartcs.agent.workbench.notification.UserMessageDeliveryPolicy;
 import com.smartcs.agent.workbench.notification.outbox.NotificationOutboxPublisher;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -60,14 +61,17 @@ public class WorkbenchTicketService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final NotificationOutboxPublisher notificationOutboxPublisher;
+    private final UserMessageDeliveryPolicy userMessageDeliveryPolicy;
 
     public WorkbenchTicketService(
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper,
-            NotificationOutboxPublisher notificationOutboxPublisher) {
+            NotificationOutboxPublisher notificationOutboxPublisher,
+            UserMessageDeliveryPolicy userMessageDeliveryPolicy) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.notificationOutboxPublisher = notificationOutboxPublisher;
+        this.userMessageDeliveryPolicy = userMessageDeliveryPolicy;
     }
 
     public PageResult<TicketSummary> listTickets(
@@ -601,15 +605,12 @@ public class WorkbenchTicketService {
                 "takeoverStatus", takeover.status(),
                 "workOrderStatus", ticket.status(),
                 "payload", request.payload());
-        insertUserVisibleMessage(ticket, "HUMAN_AGENT", content, request.operatorId(),
-                "TAKEOVER_MESSAGE_SENT",
-                messageData);
         insertWorkOrderAction(ticketId, ticket.traceId(), request.operatorId(), "TAKEOVER", content,
                 data("subAction", "MESSAGE_SENT", "takeoverId", takeover.takeoverId(), "payload", request.payload()));
         insertAudit(ticket, request.operatorId(), "TAKEOVER_MESSAGE_SENT",
                 data("takeoverId", takeover.takeoverId(), "contentLength", content.length(), "payload", request.payload()));
-        publishNotificationEvent(ticket, "TAKEOVER_MESSAGE_SENT", "人工客服消息", content,
-                request.operatorId(), messageData);
+        publishUserServiceEvent(ticket, "HUMAN_AGENT", content, request.operatorId(),
+                "TAKEOVER_MESSAGE_SENT", "人工客服消息", messageData);
 
         ActionResult result = currentResult(ticketId, "人工消息已发送");
         logActionResult("坐席发送人工消息完成", result, request.operatorId());
@@ -980,8 +981,18 @@ public class WorkbenchTicketService {
             String eventType,
             String title,
             Map<String, Object> metadata) {
-        insertUserVisibleMessage(ticket, role, content, operatorId, eventType, metadata);
-        publishNotificationEvent(ticket, eventType, title, content, operatorId, metadata);
+        Map<String, Object> deliveryMetadata = new LinkedHashMap<>();
+        if (metadata != null) {
+            deliveryMetadata.putAll(metadata);
+        }
+        deliveryMetadata.put("messageRole", role);
+        deliveryMetadata.put("userMessageDeliveryMode", userMessageDeliveryPolicy.deliveryMode());
+
+        // 迁移开关关闭时保持原有事务内直写；开启后仅由 Notification 消费 outbox 写入。
+        if (userMessageDeliveryPolicy.directWriteEnabled()) {
+            insertUserVisibleMessage(ticket, role, content, operatorId, eventType, metadata);
+        }
+        publishNotificationEvent(ticket, eventType, title, content, operatorId, deliveryMetadata);
     }
 
     private void publishNotificationEvent(

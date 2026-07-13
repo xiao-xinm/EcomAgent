@@ -29,8 +29,12 @@ spring:
 
 smartcs:
   notification:
+    channel:
+      user-session:
+        # 开启前必须同时开启 retry worker；历史和 DIRECT 事件只确认交付，不重复写消息。
+        enabled: ${SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED:false}
     retry:
-      # 当前没有内置真实投递通道，接入并验证通道幂等后才能开启。
+      # 默认关闭；开启 USER_SESSION 通道时必须一并开启。
       enabled: ${SMARTCS_NOTIFICATION_RETRY_ENABLED:false}
       fixed-delay-ms: ${SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS:30000}
       batch-size: ${SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE:20}

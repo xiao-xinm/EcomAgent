@@ -240,11 +240,12 @@
 - Workbench 已将审批结论和接管状态类用户侧事件收口到统一私有边界，业务动作不再重复散落“写用户消息 + 投递通知”的相邻组合。
 - 已完成 MQ 异步化评估文档：`docs/notification-mq-evaluation.md`。当前结论是暂不引入 RocketMQ，继续使用 MySQL 可追踪事件，后续自动重试优先评估 Notification 内部定时 worker。
 - 已实现默认关闭的 Notification 单实例定时投递框架：支持 `ACCEPTED` 首次投递、到期 `FAILED` 重试、1/5/15/30 分钟退避、最大尝试次数和可插拔 `NotificationDeliveryChannel`。
-- 当前没有内置真实通知通道，worker 保持关闭；Workbench 事务内用户消息链路保持不变，避免仅为状态流转而伪造投递成功。
+- 已新增默认关闭的幂等 `USER_SESSION` 通道；短信、邮件和 APP Push 仍未接入。
 - worker 显式开启时必须至少注册一个投递通道，否则应用启动失败，不会误消费待处理事件。
 - 已固化用户会话消息解耦迁移顺序：先做 Workbench 事务 outbox 和 `eventId` 幂等，再接 `USER_SESSION` 通道，最后灰度关闭 Workbench 直接写消息。
 - 已新增 `workbench_notification_outbox` 表、兼容发布器和默认关闭的单实例投递 worker；开启后事件随工单操作事务入队，再异步调用 Notification，失败按有限退避重试。
-- 当前默认仍走同步 HTTP 辅助链路，用户可见 `cs_message` 仍由 Workbench 事务写入；下一步补齐消息上下文和幂等 `USER_SESSION` 通道。
+- Workbench 事件已补齐 `messageRole` 和 `userMessageDeliveryMode`，Notification 使用 `eventId` 派生稳定 `messageId`；历史与 `DIRECT` 事件不会重复写消息。
+- 默认仍走同步 HTTP 辅助链路并由 Workbench 事务写 `cs_message`。灰度迁移开关和互斥启动保护已完成，下一步执行进程级故障恢复及完整 E2E 验收，再决定是否切换默认值。
 
 中间件要求：
 

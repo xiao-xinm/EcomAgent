@@ -22,7 +22,7 @@ Workbench 操作成功
 - `FAILED`：后续投递通道失败，记录 `retryCount / lastError / nextRetryAt`。
 - `DELIVERED`：后续投递通道成功，记录 `deliveredAt`。
 
-当前阶段还没有真实短信、站内信、APP Push 或 MQ 消费器。
+当前已具备默认关闭的 `USER_SESSION` 用户会话通道；短信、APP Push 和 MQ 消费器仍未接入。
 
 ## 2. 为什么暂不引入 MQ
 
@@ -57,7 +57,7 @@ Workbench 操作成功
 - 第 3 次失败：15 分钟后重试。
 - 第 4 次及以后：30 分钟后重试，或进入人工排查。
 
-当前已提供默认关闭的单实例自动 worker 框架和可插拔 `NotificationDeliveryChannel`。仓库尚未内置真实投递通道，因此保持关闭；接入真实通道并完成幂等验证后才允许启用。
+当前已提供默认关闭的单实例自动 worker 框架、可插拔 `NotificationDeliveryChannel`，以及幂等 `USER_SESSION` 通道。通道和 worker 必须成组开启。
 
 显式开启 worker 时必须至少注册一个真实投递通道，否则 Notification 会启动失败，不会领取待处理事件。
 
@@ -65,6 +65,7 @@ Workbench 操作成功
 
 ```text
 SMARTCS_NOTIFICATION_RETRY_ENABLED=false
+SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS=30000
 SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
 SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
@@ -82,7 +83,20 @@ Workbench 当前在本地业务事务中直接写 `cs_message`，随后通过 HT
 4. 完成“事务提交、重复投递、Notification 临时不可用、进程重启”四类集成测试。
 5. 通过配置灰度关闭 Workbench 直接写消息，端到端验收稳定后再移除旧路径。
 
-当前已完成第 1 步：新增 `workbench_notification_outbox`、兼容发布器和默认关闭的单实例投递 worker；本地 MySQL 已验证表结构，默认模式下 Workbench 启动正常。第 2 至 5 步仍待完成，因此继续保留 Workbench 本地事务内写消息。
+当前已完成第 1 至 3 步：Workbench outbox 已落地，事件已补齐 `messageRole` 和 `userMessageDeliveryMode`，Notification 已实现基于稳定 `messageId` 的幂等 `USER_SESSION` 通道。历史事件和 `DIRECT` 事件会安全跳过写消息。第 4 步已覆盖重复投递、历史兼容和配置互斥测试，仍需补完整进程级故障恢复联调；第 5 步只提供灰度开关，尚未切换默认值。
+
+灰度配置必须完整成组：
+
+```text
+# Workbench
+SMARTCS_NOTIFICATION_ENABLED=true
+SMARTCS_NOTIFICATION_OUTBOX_ENABLED=true
+SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false
+
+# Notification
+SMARTCS_NOTIFICATION_RETRY_ENABLED=true
+SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=true
+```
 
 这条迁移路径仍只需要 MySQL。只有在多实例抢占、吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
 

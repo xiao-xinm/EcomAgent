@@ -5,8 +5,11 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.smartcs.agent.notification.delivery.NotificationDeliveryChannel;
+import com.smartcs.agent.notification.delivery.UserSessionNotificationDeliveryChannel;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 class NotificationRetryConfigurationTest {
 
@@ -41,6 +44,36 @@ class NotificationRetryConfigurationTest {
                 .withBean(NotificationDeliveryChannel.class, () -> deliveryChannel("USER_SESSION"))
                 .run(context -> assertThat(context)
                         .hasNotFailed()
+                        .hasSingleBean(NotificationRetryWorker.class));
+    }
+
+    @Test
+    void enabledUserSessionChannelRequiresRetryWorker() {
+        contextRunner
+                .withUserConfiguration(UserSessionNotificationDeliveryChannel.class)
+                .withPropertyValues("smartcs.notification.channel.user-session.enabled=true")
+                .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(IllegalArgumentException.class)
+                            .hasStackTraceContaining("必须同时启用 Notification 重试 worker");
+                });
+    }
+
+    @Test
+    void userSessionChannelAndRetryWorkerStartTogether() {
+        contextRunner
+                .withUserConfiguration(UserSessionNotificationDeliveryChannel.class)
+                .withPropertyValues(
+                        "smartcs.notification.channel.user-session.enabled=true",
+                        "smartcs.notification.retry.enabled=true")
+                .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
+                .withBean(ObjectMapper.class, ObjectMapper::new)
+                .run(context -> assertThat(context)
+                        .hasNotFailed()
+                        .hasSingleBean(UserSessionNotificationDeliveryChannel.class)
                         .hasSingleBean(NotificationRetryWorker.class));
     }
 

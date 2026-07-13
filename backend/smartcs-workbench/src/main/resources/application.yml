@@ -38,6 +38,8 @@ smartcs:
   notification:
     enabled: ${SMARTCS_NOTIFICATION_ENABLED:true}
     base-url: ${SMARTCS_NOTIFICATION_BASE_URL:http://localhost:8085}
+    # 默认保持 Workbench 事务内写用户消息；关闭时必须启用 outbox 和 Notification USER_SESSION 通道。
+    user-message-direct-write-enabled: ${SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED:true}
     outbox:
       # 默认保持原有同步 HTTP 辅助链路；应用 12 号 SQL 后再显式开启。
       enabled: ${SMARTCS_NOTIFICATION_OUTBOX_ENABLED:false}
