@@ -42,6 +42,10 @@
 | 重建 FAQ 文档数 | `7` |
 | 成功索引操作数 | `16` |
 | 索引失败数 | `0` |
+| 索引状态接口 | `healthy=true`、`consistent=true` |
+| MySQL ACTIVE FAQ | `7` |
+| Elasticsearch ACTIVE 文档 | `7` |
+| pgvector 当前模型 ACTIVE 向量 | `7` |
 | 精确问句来源 | `hybrid-rrf-v1` |
 | 精确问句置信度 | `0.9` |
 | 语义改写来源 | `hybrid-rrf-v1` |

@@ -117,6 +117,21 @@ public class PgVectorKnowledgeStore {
         return jdbcTemplate.update("DELETE FROM knowledge_faq_embedding");
     }
 
+    public long countActive(String model, int dimensions) {
+        Long count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM knowledge_faq_embedding
+                WHERE status = 'ACTIVE'
+                  AND embedding_model = ?
+                  AND embedding_dimensions = ?
+                """,
+                Long.class,
+                model,
+                dimensions);
+        return count == null ? 0L : count;
+    }
+
     @PreDestroy
     public void close() {
         if (dataSource != null) {

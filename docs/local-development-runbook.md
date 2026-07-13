@@ -125,8 +125,11 @@ SMARTCS_RETRIEVAL_MODE=hybrid
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://localhost:8084/api/knowledge/faq/index/rebuild
+Invoke-RestMethod -Method Get -Uri http://localhost:8084/api/knowledge/faq/index/status
 .\scripts\smoke-knowledge-hybrid.ps1
 ```
+
+索引状态应满足 `healthy=true`、`consistent=true`，并且 MySQL、Elasticsearch、pgvector 的 ACTIVE 文档数一致。
 
 ## 5. 启动前端
 

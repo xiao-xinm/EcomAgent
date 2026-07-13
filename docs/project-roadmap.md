@@ -203,6 +203,8 @@
 - 已新增 `scripts/smoke-knowledge-hybrid.ps1`，用于真实中间件的重建、双路命中和语义召回验收。
 - 已于 2026-07-13 完成真实中间件验收：7 条 FAQ 成功写入 Elasticsearch 与 pgvector，共 16 个索引操作零失败；精确问句和语义改写均由 `hybrid-rrf-v1` 命中，置信度均为 `0.9`。
 - 已修复 FAQ 初始化脚本的客户端字符集声明，并在本地 Runbook 固化 Windows PowerShell 5.1 的 UTF-8 导入方式。
+- 已新增 `GET /api/knowledge/faq/index/status`，只读检查 MySQL、Elasticsearch、pgvector 的可用性、ACTIVE 文档数量和一致性；真实环境验证三端均为 7 条且状态健康。
+- 混合检索冒烟脚本已把索引健康与一致性作为强制验收门槛。
 
 中间件要求：
 

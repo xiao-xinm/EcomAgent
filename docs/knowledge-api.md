@@ -200,6 +200,55 @@ POST /api/knowledge/faq/index/rebuild
 
 `enabled=false` 表示当前仍是 `keyword` 模式。`failureCount>0` 表示部分检索副本失败，应查看 `operations` 并在依赖恢复后重新执行。
 
+### 查询混合索引状态
+
+```http
+GET /api/knowledge/faq/index/status
+```
+
+接口只读检查 MySQL 权威数据源以及当前检索模式需要的索引，不会触发重建或修改数据。
+
+```json
+{
+  "code": "0000",
+  "message": "success",
+  "data": {
+    "mode": "hybrid",
+    "enabled": true,
+    "healthy": true,
+    "consistent": true,
+    "source": {
+      "name": "mysql",
+      "available": true,
+      "documentCount": 7,
+      "message": "ready"
+    },
+    "indexes": [
+      {
+        "name": "elasticsearch",
+        "available": true,
+        "documentCount": 7,
+        "message": "ready"
+      },
+      {
+        "name": "pgvector",
+        "available": true,
+        "documentCount": 7,
+        "message": "ready"
+      }
+    ],
+    "checkedAt": "2026-07-13T06:00:00Z"
+  }
+}
+```
+
+状态含义：
+
+- `enabled=false`：当前为 `keyword` 模式，只检查 MySQL，不访问 ES 或 pgvector。
+- `healthy=true`：当前模式所需的数据源均可访问，且混合模式下两个索引文档数与 MySQL ACTIVE FAQ 数量一致。
+- `consistent=false`：至少一个检索索引不可用、探针未加载，或文档数与 MySQL 不一致；应先查看各项 `message`，必要时执行全量重建。
+- 状态响应不会返回连接串、用户名、密码或 DashScope API Key。
+
 ## Agent Core 路由
 
 Agent Core 当前只把政策、规则、时效类知识问法识别为 `faq.query`，例如：

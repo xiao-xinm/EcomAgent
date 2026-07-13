@@ -35,6 +35,11 @@ if ($rebuild.data.failureCount -gt 0) {
     throw "Hybrid index rebuild contains failures: $operations"
 }
 
+$indexStatus = Invoke-RestMethod -Method Get -Uri "$KnowledgeBaseUrl/api/knowledge/faq/index/status"
+if ($indexStatus.code -ne "0000" -or -not $indexStatus.data.healthy -or -not $indexStatus.data.consistent) {
+    throw "Hybrid index status is unhealthy or inconsistent: $($indexStatus | ConvertTo-Json -Depth 10 -Compress)"
+}
+
 $exactQuestion = -join @(
     [char]0x9000, [char]0x6B3E, [char]0x591A,
     [char]0x4E45, [char]0x5230, [char]0x8D26
@@ -75,6 +80,8 @@ if (-not $semantic.data.matched -or $semantic.data.source -notin $semanticSource
     Health = $health.data.status
     IndexedDocuments = $rebuild.data.documentCount
     IndexOperations = $rebuild.data.successCount
+    IndexHealthy = $indexStatus.data.healthy
+    IndexConsistent = $indexStatus.data.consistent
     ExactSource = $exact.data.source
     ExactConfidence = $exact.data.confidence
     SemanticSource = $semantic.data.source
