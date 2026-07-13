@@ -809,6 +809,40 @@ interface TakeoverFinishRequest {
 - 写入操作日志和审计日志
 - `cs_message` 新增一条 `HUMAN_AGENT` 用户可见消息，用户端通过会话消息列表可看到人工处理结束结果
 
+### 5.16 查询通知 outbox 运行摘要
+
+```http
+GET /api/workbench/notifications/outbox/summary
+```
+
+该接口使用与工单读取接口相同的坐席身份边界，只允许 `AGENT`、`SUPERVISOR` 或 `ADMIN`。标准 `CUSTOMER` 身份返回业务错误码 `1003`。
+
+响应：
+
+```ts
+interface NotificationOutboxSummary {
+  enabled: boolean;
+  pending: number;
+  retryableFailed: number;
+  exhaustedFailed: number;
+  sent: number;
+  due: number;
+  leased: number;
+  oldestDueAt?: string;
+}
+```
+
+字段说明：
+
+- `pending`：全部 `PENDING` 事件，包括当前被其他 worker 租用的事件。
+- `retryableFailed`：失败次数尚未达到 `max-attempts` 的 `FAILED` 事件。
+- `exhaustedFailed`：失败次数已经达到 `max-attempts` 的 `FAILED` 事件。
+- `due`：当前已到期、未被有效租约占用且可立即领取的事件。
+- `leased`：当前被有效租约占用的开放事件。
+- `oldestDueAt`：当前可领取事件中最早的到期时间；没有积压时为 `null`。
+
+Workbench outbox 默认关闭。关闭时接口返回 `enabled=false` 和零计数，不访问 outbox 表；开启后必须先完成 12、14 号 SQL 迁移。
+
 ## 6. 前端实现建议
 
 当前可以实现坐席工作台最小页面：

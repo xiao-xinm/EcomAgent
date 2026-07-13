@@ -10,6 +10,7 @@
 - 用户可见会话消息回写。
 - Notification 事件发布，以及默认关闭的 MySQL 事务 outbox 和有限重试 worker。
 - 通知事件携带 `messageRole` 和 `userMessageDeliveryMode`，可灰度迁移用户消息写入职责。
+- 受坐席身份保护的 outbox 运行摘要，展示待投递、失败、耗尽、租约和最老积压时间。
 
 启用事务 outbox 前依次执行 `infra/sql/12-workbench-notification-outbox.sql` 和
 `infra/sql/14-workbench-outbox-delivery-lease.sql`，然后设置：

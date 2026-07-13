@@ -131,6 +131,55 @@ public class NotificationOutboxRepository {
                 workerId);
     }
 
+    public NotificationOutboxSummary summarize(int maxAttempts) {
+        if (maxAttempts <= 0) {
+            throw new IllegalArgumentException("maxAttempts 必须大于 0");
+        }
+        return jdbcTemplate.queryForObject(
+                """
+                SELECT
+                    COALESCE(SUM(status = 'PENDING'), 0) AS pending_count,
+                    COALESCE(SUM(status = 'FAILED' AND attempt_count < ?), 0) AS retryable_failed_count,
+                    COALESCE(SUM(status = 'FAILED' AND attempt_count >= ?), 0) AS exhausted_failed_count,
+                    COALESCE(SUM(status = 'SENT'), 0) AS sent_count,
+                    COALESCE(SUM(
+                        attempt_count < ?
+                        AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
+                        AND (
+                            status = 'PENDING'
+                            OR (status = 'FAILED' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW(3)))
+                        )
+                    ), 0) AS due_count,
+                    COALESCE(SUM(
+                        status IN ('PENDING', 'FAILED')
+                        AND delivery_lease_until > NOW(3)
+                    ), 0) AS leased_count,
+                    MIN(CASE
+                        WHEN attempt_count < ?
+                         AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
+                         AND (
+                            status = 'PENDING'
+                            OR (status = 'FAILED' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW(3)))
+                         )
+                        THEN COALESCE(next_attempt_at, created_at)
+                    END) AS oldest_due_at
+                FROM workbench_notification_outbox
+                """,
+                (rs, rowNum) -> new NotificationOutboxSummary(
+                        true,
+                        rs.getLong("pending_count"),
+                        rs.getLong("retryable_failed_count"),
+                        rs.getLong("exhausted_failed_count"),
+                        rs.getLong("sent_count"),
+                        rs.getLong("due_count"),
+                        rs.getLong("leased_count"),
+                        toInstant(rs.getTimestamp("oldest_due_at"))),
+                maxAttempts,
+                maxAttempts,
+                maxAttempts,
+                maxAttempts);
+    }
+
     private void validateClaimArguments(
             String workerId,
             int batchSize,
@@ -169,5 +218,9 @@ public class NotificationOutboxRepository {
         return normalized.length() <= MAX_ERROR_LENGTH
                 ? normalized
                 : normalized.substring(0, MAX_ERROR_LENGTH);
+    }
+
+    private Instant toInstant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
     }
 }

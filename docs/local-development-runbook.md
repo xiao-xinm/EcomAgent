@@ -111,6 +111,16 @@ SMARTCS_NOTIFICATION_OUTBOX_LEASE_DURATION_MS=120000
 
 多实例部署时每个 Workbench 进程可以设置不同的 `SMARTCS_NOTIFICATION_OUTBOX_WORKER_ID`；留空会自动生成。租约应长于一次 Notification HTTP 调用的最大耗时。
 
+启用后可使用坐席开发身份查看 outbox 运行摘要：
+
+```powershell
+Invoke-RestMethod `
+  -Uri http://localhost:8083/api/workbench/notifications/outbox/summary `
+  -Headers @{ "X-SmartCS-Operator-Id" = "agent_001"; "X-SmartCS-Roles" = "AGENT" }
+```
+
+重点关注 `due`、`exhaustedFailed` 和 `oldestDueAt`。outbox 关闭时接口返回 `enabled=false` 和零计数。
+
 仅验证 outbox 时，Workbench 仍直接写用户可见 `cs_message`。验证完整解耦迁移时，在上述配置基础上再设置：
 
 ```text

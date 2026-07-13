@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartcs.agent.workbench.notification.NotificationEventDtos.NotificationEventRequest;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,38 @@ class NotificationOutboxRepositoryTest {
         assertThatThrownBy(() -> repository.claimDue("workbench-test", 20, 5, 999))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("leaseDurationMs");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void summarizeMapsOperationalCountsAndOldestDueTime() throws Exception {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        NotificationOutboxRepository repository = repository(jdbcTemplate);
+        ResultSet resultSet = mock(ResultSet.class);
+        Instant oldestDueAt = Instant.parse("2026-07-13T08:00:00Z");
+        when(resultSet.getLong("pending_count")).thenReturn(3L);
+        when(resultSet.getLong("retryable_failed_count")).thenReturn(2L);
+        when(resultSet.getLong("exhausted_failed_count")).thenReturn(1L);
+        when(resultSet.getLong("sent_count")).thenReturn(12L);
+        when(resultSet.getLong("due_count")).thenReturn(4L);
+        when(resultSet.getLong("leased_count")).thenReturn(1L);
+        when(resultSet.getTimestamp("oldest_due_at")).thenReturn(Timestamp.from(oldestDueAt));
+        when(jdbcTemplate.queryForObject(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(invocation -> {
+                    RowMapper<NotificationOutboxSummary> rowMapper = invocation.getArgument(1);
+                    return rowMapper.mapRow(resultSet, 0);
+                });
+
+        NotificationOutboxSummary summary = repository.summarize(5);
+
+        assertThat(summary.enabled()).isTrue();
+        assertThat(summary.pending()).isEqualTo(3);
+        assertThat(summary.retryableFailed()).isEqualTo(2);
+        assertThat(summary.exhaustedFailed()).isEqualTo(1);
+        assertThat(summary.sent()).isEqualTo(12);
+        assertThat(summary.due()).isEqualTo(4);
+        assertThat(summary.leased()).isEqualTo(1);
+        assertThat(summary.oldestDueAt()).isEqualTo(oldestDueAt);
     }
 
     private NotificationOutboxRepository repository(JdbcTemplate jdbcTemplate) {
