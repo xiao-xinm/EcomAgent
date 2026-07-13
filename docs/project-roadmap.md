@@ -171,7 +171,7 @@
 
 ### Phase 5. 知识库能力增强
 
-状态：进行中。
+状态：混合检索基础闭环已完成，运营增强待继续。
 
 目标：
 
@@ -201,6 +201,8 @@
 - 已实现 Elasticsearch 中文关键词检索、pgvector 语义检索和应用层 RRF 融合，默认 `keyword` 模式不连接外部检索服务。
 - 已实现 MySQL FAQ 新增、编辑、启停后的 ES/pgvector 尽力同步，以及 `POST /api/knowledge/faq/index/rebuild` 全量重建接口。
 - 已新增 `scripts/smoke-knowledge-hybrid.ps1`，用于真实中间件的重建、双路命中和语义召回验收。
+- 已于 2026-07-13 完成真实中间件验收：7 条 FAQ 成功写入 Elasticsearch 与 pgvector，共 16 个索引操作零失败；精确问句和语义改写均由 `hybrid-rrf-v1` 命中，置信度均为 `0.9`。
+- 已修复 FAQ 初始化脚本的客户端字符集声明，并在本地 Runbook 固化 Windows PowerShell 5.1 的 UTF-8 导入方式。
 
 中间件要求：
 

@@ -218,6 +218,16 @@ PowerShell 调接口前设置：
 -ContentType 'application/json; charset=utf-8'
 ```
 
+Windows PowerShell 5.1 通过管道把 SQL 交给 `mysql.exe` 时，还要显式设置原生进程输出编码，否则脚本中的中文可能在进入 MySQL 前被转换成 `?`：
+
+```powershell
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+Get-Content -Raw -Encoding UTF8 .\infra\sql\09-knowledge-faq-management.sql |
+    mysql --default-character-set=utf8mb4 -u root -p
+```
+
+导入后可通过 FAQ 列表接口确认 `faq_refund_arrival.question` 等字段仍是正常中文，再执行混合索引重建。
+
 ### MySQL 端口冲突
 
 如果 `3306` 已被占用，修改 `infra/docker/.env`：

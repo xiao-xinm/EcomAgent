@@ -1,6 +1,9 @@
 -- SmartCS Knowledge FAQ management schema.
 -- Run this once before using the FAQ management APIs in smartcs-knowledge.
 
+-- 显式声明客户端字符集，避免通过不同终端导入时把中文写成问号。
+SET NAMES utf8mb4;
+
 USE `smartcs_agent`;
 
 CREATE TABLE IF NOT EXISTS `knowledge_faq` (

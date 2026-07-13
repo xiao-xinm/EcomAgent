@@ -56,6 +56,8 @@
 
 `smartcs-knowledge` 查询链路优先读取 `knowledge_faq` 中的 `ACTIVE` 数据；表未初始化或没有可用数据时会回退到内置 FAQ。
 
+`09-knowledge-faq-management.sql` 会显式执行 `SET NAMES utf8mb4`。在 Windows PowerShell 5.1 中通过管道执行该脚本时，还需把 `$OutputEncoding` 设置为 UTF-8，具体命令见 `docs/local-development-runbook.md`，避免中文在进入 MySQL 客户端前被转换成问号。
+
 第六阶段已开始：
 
 - 通知事件：`notification_event`
