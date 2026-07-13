@@ -227,6 +227,7 @@ SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 - 处理 `ACCEPTED` 事件的首次投递，以及 `next_retry_at <= NOW(3)` 的 `FAILED` 事件。
 - 仅选择 `retry_count < maxAttempts` 的事件，每轮最多处理 `batchSize` 条。
 - 真实投递通道通过 `NotificationDeliveryChannel` 扩展，并按 `channel` 精确匹配。
+- 显式开启 worker 但没有注册任何投递通道时，应用会启动失败，不会消费待处理事件。
 - 通道必须使用 `eventId` 保证幂等，避免进程重启或重复调度造成重复通知。
 - 投递成功后状态变为 `DELIVERED`。
 - 投递失败后增加 `retryCount`，默认按 1、5、15、30 分钟退避。

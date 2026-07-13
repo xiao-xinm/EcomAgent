@@ -10,7 +10,7 @@
 - 默认关闭的单实例定时投递 worker。
 - 通过 `NotificationDeliveryChannel` 扩展真实投递渠道。
 
-当前没有内置短信、邮件、APP Push 或站内信通道，`SMARTCS_NOTIFICATION_RETRY_ENABLED` 必须保持 `false`。接入真实通道并完成 `eventId` 幂等验证后再启用。
+当前没有内置短信、邮件、APP Push 或站内信通道，`SMARTCS_NOTIFICATION_RETRY_ENABLED` 必须保持 `false`。接入真实通道并完成 `eventId` 幂等验证后再启用；如果误开但没有注册通道，应用会直接启动失败，不会消费待处理事件。
 
 详细契约见 `docs/notification-api.md` 和 `docs/notification-mq-evaluation.md`。
 

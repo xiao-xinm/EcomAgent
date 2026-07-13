@@ -2,7 +2,7 @@
 
 本文档用于记录 SmartCS 通知服务是否需要引入 MQ，以及在不引入 MQ 的阶段如何继续保持通知链路可追踪、可恢复。
 
-当前结论：**Phase 6 暂不引入 RocketMQ**。继续使用 MySQL `notification_event` 作为通知事件存储和排障入口；投递失败通过状态字段记录，后续如需自动重试，优先做轻量定时任务，再评估 MQ。
+当前结论：**Phase 6 暂不引入 RocketMQ**。继续使用 MySQL `notification_event` 作为通知事件存储和排障入口；投递失败由默认关闭的轻量定时 worker 处理，完成真实通道和幂等验证后再启用。
 
 ## 1. 当前链路
 
@@ -58,6 +58,8 @@ Workbench 操作成功
 
 当前已提供默认关闭的单实例自动 worker 框架和可插拔 `NotificationDeliveryChannel`。仓库尚未内置真实投递通道，因此保持关闭；接入真实通道并完成幂等验证后才允许启用。
 
+显式开启 worker 时必须至少注册一个真实投递通道，否则 Notification 会启动失败，不会领取待处理事件。
+
 默认配置：
 
 ```text
@@ -67,7 +69,23 @@ SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
 SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 ```
 
-## 4. 引入 RocketMQ 的触发条件
+## 4. 用户会话消息解耦迁移顺序
+
+Workbench 当前在本地业务事务中直接写 `cs_message`，随后通过 HTTP 发布 Notification 事件。两次写入使用不同的随机 ID，Notification 调用失败也不会回滚坐席操作。这个设计保证当前用户能看到处理结果，但不能直接通过删除 Workbench 写消息来完成解耦。
+
+后续迁移必须按以下顺序进行：
+
+1. 在 Workbench 业务事务内新增本地 outbox 事件，事件 ID 在事务开始时生成并保持稳定。
+2. 在事件 payload 中补齐用户消息所需的 `role`、`intent`、`riskLevel`、`routeDecision` 和业务 metadata。
+3. 为 Notification 增加 `USER_SESSION` 投递通道，使用 `eventId` 派生稳定 `messageId`，重复消费只返回成功、不重复写 `cs_message`。
+4. 完成“事务提交、重复投递、Notification 临时不可用、进程重启”四类集成测试。
+5. 通过配置灰度关闭 Workbench 直接写消息，端到端验收稳定后再移除旧路径。
+
+当前不执行第 1 至 5 步，原因是项目还没有 outbox 表和真实 `USER_SESSION` 通道。继续保留 Workbench 本地事务内写消息，是比非事务 HTTP 双写更可靠的选择。
+
+这条迁移路径仍只需要 MySQL。只有在多实例抢占、吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
+
+## 5. 引入 RocketMQ 的触发条件
 
 满足以下任一条件时，再启动 RocketMQ 方案评审：
 
@@ -77,7 +95,7 @@ SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 - 通知事件量明显增长，单纯 MySQL 轮询造成压力。
 - 后续部署多实例，需要更可靠的事件分发和消费位点管理。
 
-## 5. RocketMQ 候选设计
+## 6. RocketMQ 候选设计
 
 如果后续用户确认引入 RocketMQ，建议先采用单 Topic、多 Tag：
 
@@ -119,7 +137,7 @@ SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 }
 ```
 
-## 6. RocketMQ 消费失败策略
+## 7. RocketMQ 消费失败策略
 
 如果引入 RocketMQ，消费端仍应复用 `notification_event` 状态：
 
@@ -134,7 +152,7 @@ SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
 - 达到 MQ 最大重试后，写入 `FAILED`，交给业务重试或人工排查。
 - 消费逻辑必须按 `eventId` 做幂等，重复消息不能重复投递用户。
 
-## 7. 本地启动要求
+## 8. 本地启动要求
 
 只有确认接入 RocketMQ 后，才需要用户启动中间件。
 
@@ -154,13 +172,14 @@ SMARTCS_NOTIFICATION_TOPIC=SMARTCS_NOTIFICATION_EVENT
 
 当前阶段这些配置项不需要添加到代码中。
 
-## 8. 当前执行建议
+## 9. 当前执行建议
 
 短期继续推进：
 
 - 保持 Workbench -> Notification HTTP 投递。
 - 保持 `notification_event` 查询和状态回写。
-- 后续如要做自动重试，先做 Notification 内部定时 worker，不引入新中间件。
+- 保持自动重试 worker 默认关闭，先接入并验证至少一个真实幂等通道。
+- 用户会话消息解耦先落地事务 outbox，再切换消息写入责任。
 
 暂缓事项：
 

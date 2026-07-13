@@ -124,6 +124,9 @@ public class NotificationRetryWorker {
 
     private Map<String, NotificationDeliveryChannel> indexChannels(
             List<NotificationDeliveryChannel> channelList) {
+        if (channelList.isEmpty()) {
+            throw new IllegalArgumentException("至少需要注册一个通知投递通道");
+        }
         Map<String, NotificationDeliveryChannel> indexed = new LinkedHashMap<>();
         for (NotificationDeliveryChannel channel : channelList) {
             String name = normalizeChannel(channel.channel());

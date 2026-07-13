@@ -241,6 +241,8 @@
 - 已完成 MQ 异步化评估文档：`docs/notification-mq-evaluation.md`。当前结论是暂不引入 RocketMQ，继续使用 MySQL 可追踪事件，后续自动重试优先评估 Notification 内部定时 worker。
 - 已实现默认关闭的 Notification 单实例定时投递框架：支持 `ACCEPTED` 首次投递、到期 `FAILED` 重试、1/5/15/30 分钟退避、最大尝试次数和可插拔 `NotificationDeliveryChannel`。
 - 当前没有内置真实通知通道，worker 保持关闭；Workbench 事务内用户消息链路保持不变，避免仅为状态流转而伪造投递成功。
+- worker 显式开启时必须至少注册一个投递通道，否则应用启动失败，不会误消费待处理事件。
+- 已固化用户会话消息解耦迁移顺序：先做 Workbench 事务 outbox 和 `eventId` 幂等，再接 `USER_SESSION` 通道，最后灰度关闭 Workbench 直接写消息。
 
 中间件要求：
 

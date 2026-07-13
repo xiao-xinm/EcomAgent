@@ -54,7 +54,7 @@ class NotificationRetryWorkerTest {
     void unsupportedChannelDoesNotPretendDeliverySucceeded() {
         NotificationRetryRepository repository = mock(NotificationRetryRepository.class);
         when(repository.findDue(20, 5)).thenReturn(List.of(event(0, "SMS")));
-        NotificationRetryWorker worker = worker(repository, List.of(), 5);
+        NotificationRetryWorker worker = worker(repository, List.of(channel("USER_SESSION")), 5);
 
         worker.runOnce();
 
@@ -86,6 +86,15 @@ class NotificationRetryWorkerTest {
                         5))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("重复通知通道");
+    }
+
+    @Test
+    void missingDeliveryChannelIsRejectedAtStartup() {
+        NotificationRetryRepository repository = mock(NotificationRetryRepository.class);
+
+        assertThatThrownBy(() -> worker(repository, List.of(), 5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("至少需要注册一个通知投递通道");
     }
 
     private NotificationRetryWorker worker(
