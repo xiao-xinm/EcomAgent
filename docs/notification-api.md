@@ -208,3 +208,29 @@ smartcs:
 ```
 
 本地如果暂时不启动 `smartcs-notification`，Workbench 主流程仍可运行，只会在日志中看到通知投递失败的 warning。
+
+## 内部自动重试 worker
+
+Notification 服务提供基于 MySQL 的轻量定时投递框架，默认关闭。当前仓库尚未内置真实站内信、短信、邮件或 APP Push 通道，因此不要仅为了改变事件状态而开启 worker。
+
+启用配置：
+
+```text
+SMARTCS_NOTIFICATION_RETRY_ENABLED=false
+SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS=30000
+SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
+SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
+```
+
+执行规则：
+
+- 处理 `ACCEPTED` 事件的首次投递，以及 `next_retry_at <= NOW(3)` 的 `FAILED` 事件。
+- 仅选择 `retry_count < maxAttempts` 的事件，每轮最多处理 `batchSize` 条。
+- 真实投递通道通过 `NotificationDeliveryChannel` 扩展，并按 `channel` 精确匹配。
+- 通道必须使用 `eventId` 保证幂等，避免进程重启或重复调度造成重复通知。
+- 投递成功后状态变为 `DELIVERED`。
+- 投递失败后增加 `retryCount`，默认按 1、5、15、30 分钟退避。
+- 达到最大尝试次数后保留 `FAILED`，清空 `nextRetryAt`，等待人工处理。
+- 当前实现按单实例 worker 运行；部署多实例或需要高吞吐时，应重新评估数据库抢占或 RocketMQ。
+
+当前 Workbench 仍在本地事务内写用户可见 `cs_message`，Notification 自动重试不会替代这条主链路。

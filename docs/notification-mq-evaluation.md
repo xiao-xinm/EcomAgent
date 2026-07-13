@@ -56,7 +56,16 @@ Workbench 操作成功
 - 第 3 次失败：15 分钟后重试。
 - 第 4 次及以后：30 分钟后重试，或进入人工排查。
 
-当前版本暂不实现自动 worker，只保留状态模型和手工回写接口。
+当前已提供默认关闭的单实例自动 worker 框架和可插拔 `NotificationDeliveryChannel`。仓库尚未内置真实投递通道，因此保持关闭；接入真实通道并完成幂等验证后才允许启用。
+
+默认配置：
+
+```text
+SMARTCS_NOTIFICATION_RETRY_ENABLED=false
+SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS=30000
+SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE=20
+SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS=5
+```
 
 ## 4. 引入 RocketMQ 的触发条件
 

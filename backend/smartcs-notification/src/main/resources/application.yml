@@ -26,3 +26,12 @@ spring:
         enabled: false
     sentinel:
       enabled: false
+
+smartcs:
+  notification:
+    retry:
+      # 当前没有内置真实投递通道，接入并验证通道幂等后才能开启。
+      enabled: ${SMARTCS_NOTIFICATION_RETRY_ENABLED:false}
+      fixed-delay-ms: ${SMARTCS_NOTIFICATION_RETRY_FIXED_DELAY_MS:30000}
+      batch-size: ${SMARTCS_NOTIFICATION_RETRY_BATCH_SIZE:20}
+      max-attempts: ${SMARTCS_NOTIFICATION_RETRY_MAX_ATTEMPTS:5}

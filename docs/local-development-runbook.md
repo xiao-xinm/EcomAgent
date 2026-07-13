@@ -87,6 +87,12 @@ SMARTCS_DB_PASSWORD=root
 
 如 MySQL 不在本机，修改 IDEA Run Configuration 的 `SMARTCS_DB_URL`。
 
+Notification 的内部重试 worker 默认关闭。当前没有内置真实投递通道，本地无需配置；只有接入并验证通道幂等后才设置：
+
+```text
+SMARTCS_NOTIFICATION_RETRY_ENABLED=true
+```
+
 Knowledge 混合检索后续使用以下环境变量。密码和 API Key 只能配置在 IDEA、系统环境变量或未提交的本地配置中：
 
 ```text
