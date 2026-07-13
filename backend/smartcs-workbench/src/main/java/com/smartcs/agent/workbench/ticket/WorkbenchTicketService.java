@@ -20,8 +20,8 @@ import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketDetail;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketStatsView;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.TicketSummary;
 import com.smartcs.agent.workbench.ticket.WorkbenchDtos.WorkOrderView;
-import com.smartcs.agent.workbench.notification.NotificationEventClient;
 import com.smartcs.agent.workbench.notification.NotificationEventDtos.NotificationEventRequest;
+import com.smartcs.agent.workbench.notification.outbox.NotificationOutboxPublisher;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -59,15 +59,15 @@ public class WorkbenchTicketService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
-    private final NotificationEventClient notificationEventClient;
+    private final NotificationOutboxPublisher notificationOutboxPublisher;
 
     public WorkbenchTicketService(
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper,
-            NotificationEventClient notificationEventClient) {
+            NotificationOutboxPublisher notificationOutboxPublisher) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
-        this.notificationEventClient = notificationEventClient;
+        this.notificationOutboxPublisher = notificationOutboxPublisher;
     }
 
     public PageResult<TicketSummary> listTickets(
@@ -998,7 +998,7 @@ public class WorkbenchTicketService {
         if (eventData != null) {
             payload.putAll(eventData);
         }
-        notificationEventClient.publish(new NotificationEventRequest(
+        notificationOutboxPublisher.publish(new NotificationEventRequest(
                 "ntf_" + UUID.randomUUID(),
                 ticket.traceId(),
                 "smartcs-workbench",

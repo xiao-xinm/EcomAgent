@@ -62,6 +62,7 @@ mysql -u root -p smartcs_agent < 08-work-order-internal-note-action.sql
 mysql -u root -p smartcs_agent < 09-knowledge-faq-management.sql
 mysql -u root -p smartcs_agent < 10-notification-event-store.sql
 mysql -u root -p smartcs_agent < 11-notification-delivery-status.sql
+mysql -u root -p smartcs_agent < 12-workbench-notification-outbox.sql
 ```
 
 ## 4. 启动后端服务
@@ -92,6 +93,15 @@ Notification 的内部重试 worker 默认关闭。当前没有内置真实投�
 ```text
 SMARTCS_NOTIFICATION_RETRY_ENABLED=true
 ```
+
+Workbench 通知 outbox 也默认关闭，关闭时保持原有同步 HTTP 辅助链路。需要验证事务 outbox 时，先执行 `12-workbench-notification-outbox.sql`，同时启动 Workbench 与 Notification，再设置：
+
+```text
+SMARTCS_NOTIFICATION_OUTBOX_ENABLED=true
+SMARTCS_NOTIFICATION_ENABLED=true
+```
+
+outbox 只负责把 Workbench 通知事件可靠投递给 Notification，不替代 Workbench 事务内的用户可见 `cs_message` 写入。
 
 Knowledge 混合检索后续使用以下环境变量。密码和 API Key 只能配置在 IDEA、系统环境变量或未提交的本地配置中：
 

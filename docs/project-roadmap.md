@@ -243,6 +243,8 @@
 - 当前没有内置真实通知通道，worker 保持关闭；Workbench 事务内用户消息链路保持不变，避免仅为状态流转而伪造投递成功。
 - worker 显式开启时必须至少注册一个投递通道，否则应用启动失败，不会误消费待处理事件。
 - 已固化用户会话消息解耦迁移顺序：先做 Workbench 事务 outbox 和 `eventId` 幂等，再接 `USER_SESSION` 通道，最后灰度关闭 Workbench 直接写消息。
+- 已新增 `workbench_notification_outbox` 表、兼容发布器和默认关闭的单实例投递 worker；开启后事件随工单操作事务入队，再异步调用 Notification，失败按有限退避重试。
+- 当前默认仍走同步 HTTP 辅助链路，用户可见 `cs_message` 仍由 Workbench 事务写入；下一步补齐消息上下文和幂等 `USER_SESSION` 通道。
 
 中间件要求：
 

@@ -14,6 +14,7 @@
 - `09-knowledge-faq-management.sql`：FAQ 知识库管理表结构和初始数据。
 - `10-notification-event-store.sql`：通知事件落库表结构。
 - `11-notification-delivery-status.sql`：通知投递状态、失败原因和重试时间字段。
+- `12-workbench-notification-outbox.sql`：Workbench 到 Notification 的事务 outbox 表结构。
 
 第一阶段已覆盖：
 
@@ -64,3 +65,5 @@
 
 `smartcs-notification` 接收 Workbench 投递的审批、人工接管、人工消息等通知事件，并写入 `notification_event` 供后续查询、重试和事件解耦使用。
 当前已扩展投递状态字段，用于记录失败原因、重试次数、下次重试时间和成功投递时间。
+
+Workbench 通知 outbox 已提供默认关闭的兼容模式。启用前必须先执行 `12-workbench-notification-outbox.sql`；启用后，通知事件随工单操作事务入队，再由单实例 worker 投递到 Notification。

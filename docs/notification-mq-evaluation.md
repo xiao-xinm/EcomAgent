@@ -6,12 +6,13 @@
 
 ## 1. 当前链路
 
-当前 Workbench 在审批、人工接管、人工消息等动作成功后，通过 HTTP 调用 `smartcs-notification`：
+当前 Workbench 支持两种兼容模式：默认仍在动作成功后通过 HTTP 调用 `smartcs-notification`；显式开启 outbox 后，事件先随业务事务入队，再由 worker 调用 Notification。
 
 ```text
 Workbench 操作成功
   -> 写工单状态 / 操作日志 / 审计日志 / 用户可见消息
-  -> POST /api/notifications/events
+  -> 默认：POST /api/notifications/events
+  -> 可选：workbench_notification_outbox -> worker -> POST /api/notifications/events
   -> notification_event 落库
 ```
 
@@ -75,13 +76,13 @@ Workbench 当前在本地业务事务中直接写 `cs_message`，随后通过 HT
 
 后续迁移必须按以下顺序进行：
 
-1. 在 Workbench 业务事务内新增本地 outbox 事件，事件 ID 在事务开始时生成并保持稳定。
+1. 在 Workbench 业务事务内新增本地 outbox 事件，事件 ID 在事务开始时生成并保持稳定。（已完成，默认关闭）
 2. 在事件 payload 中补齐用户消息所需的 `role`、`intent`、`riskLevel`、`routeDecision` 和业务 metadata。
 3. 为 Notification 增加 `USER_SESSION` 投递通道，使用 `eventId` 派生稳定 `messageId`，重复消费只返回成功、不重复写 `cs_message`。
 4. 完成“事务提交、重复投递、Notification 临时不可用、进程重启”四类集成测试。
 5. 通过配置灰度关闭 Workbench 直接写消息，端到端验收稳定后再移除旧路径。
 
-当前不执行第 1 至 5 步，原因是项目还没有 outbox 表和真实 `USER_SESSION` 通道。继续保留 Workbench 本地事务内写消息，是比非事务 HTTP 双写更可靠的选择。
+当前已完成第 1 步：新增 `workbench_notification_outbox`、兼容发布器和默认关闭的单实例投递 worker；本地 MySQL 已验证表结构，默认模式下 Workbench 启动正常。第 2 至 5 步仍待完成，因此继续保留 Workbench 本地事务内写消息。
 
 这条迁移路径仍只需要 MySQL。只有在多实例抢占、吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
 
@@ -176,10 +177,10 @@ SMARTCS_NOTIFICATION_TOPIC=SMARTCS_NOTIFICATION_EVENT
 
 短期继续推进：
 
-- 保持 Workbench -> Notification HTTP 投递。
+- 默认保持 Workbench -> Notification HTTP 投递；联调环境可显式开启事务 outbox。
 - 保持 `notification_event` 查询和状态回写。
 - 保持自动重试 worker 默认关闭，先接入并验证至少一个真实幂等通道。
-- 用户会话消息解耦先落地事务 outbox，再切换消息写入责任。
+- 为 outbox 事件补齐用户消息上下文，再实现幂等 `USER_SESSION` 通道。
 
 暂缓事项：
 

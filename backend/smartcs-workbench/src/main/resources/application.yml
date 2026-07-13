@@ -38,3 +38,9 @@ smartcs:
   notification:
     enabled: ${SMARTCS_NOTIFICATION_ENABLED:true}
     base-url: ${SMARTCS_NOTIFICATION_BASE_URL:http://localhost:8085}
+    outbox:
+      # 默认保持原有同步 HTTP 辅助链路；应用 12 号 SQL 后再显式开启。
+      enabled: ${SMARTCS_NOTIFICATION_OUTBOX_ENABLED:false}
+      fixed-delay-ms: ${SMARTCS_NOTIFICATION_OUTBOX_FIXED_DELAY_MS:30000}
+      batch-size: ${SMARTCS_NOTIFICATION_OUTBOX_BATCH_SIZE:20}
+      max-attempts: ${SMARTCS_NOTIFICATION_OUTBOX_MAX_ATTEMPTS:5}

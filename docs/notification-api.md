@@ -15,6 +15,7 @@ MQ 是否引入、何时引入以及 RocketMQ 候选设计见 [notification-mq-e
 - 初始化脚本：
   - `infra/sql/10-notification-event-store.sql`
   - `infra/sql/11-notification-delivery-status.sql`
+  - 可选 Workbench outbox：`infra/sql/12-workbench-notification-outbox.sql`
 
 ## 接收通知事件
 
@@ -192,11 +193,13 @@ Workbench 当前会在以下动作成功后投递通知事件：
 - `TAKEOVER_MESSAGE_SENT`
 - `TAKEOVER_FINISHED`
 
-通知投递是辅助链路：
+默认直接 HTTP 模式下，通知投递是辅助链路：
 
 - Workbench 仍先写工单状态、操作日志、审计日志和用户可见消息。
 - Notification 调用失败只写 warn 日志。
 - Notification 调用失败不会回滚审批或人工接管操作。
+
+启用事务 outbox 后，Workbench 不在业务事务内调用 Notification，而是把稳定 `eventId` 和完整事件请求写入 `workbench_notification_outbox`。入队失败会回滚当前工单操作；事务提交后由单实例 worker 调用 Notification，失败按有限退避重试。
 
 ## Workbench 配置
 
@@ -205,9 +208,16 @@ smartcs:
   notification:
     enabled: ${SMARTCS_NOTIFICATION_ENABLED:true}
     base-url: ${SMARTCS_NOTIFICATION_BASE_URL:http://localhost:8085}
+    outbox:
+      enabled: ${SMARTCS_NOTIFICATION_OUTBOX_ENABLED:false}
+      fixed-delay-ms: ${SMARTCS_NOTIFICATION_OUTBOX_FIXED_DELAY_MS:30000}
+      batch-size: ${SMARTCS_NOTIFICATION_OUTBOX_BATCH_SIZE:20}
+      max-attempts: ${SMARTCS_NOTIFICATION_OUTBOX_MAX_ATTEMPTS:5}
 ```
 
 本地如果暂时不启动 `smartcs-notification`，Workbench 主流程仍可运行，只会在日志中看到通知投递失败的 warning。
+
+启用 outbox 前必须执行 `12-workbench-notification-outbox.sql`，并保持 `SMARTCS_NOTIFICATION_ENABLED=true`。outbox worker 处理 `PENDING` 和到期 `FAILED` 事件，按 1、5、15、30 分钟退避，默认最多尝试 5 次。当前实现仅支持单实例调度。
 
 ## 内部自动重试 worker
 
