@@ -11,13 +11,16 @@
 - Notification 事件发布，以及默认关闭的 MySQL 事务 outbox 和有限重试 worker。
 - 通知事件携带 `messageRole` 和 `userMessageDeliveryMode`，可灰度迁移用户消息写入职责。
 
-启用事务 outbox 前先执行 `infra/sql/12-workbench-notification-outbox.sql`，然后设置：
+启用事务 outbox 前依次执行 `infra/sql/12-workbench-notification-outbox.sql` 和
+`infra/sql/14-workbench-outbox-delivery-lease.sql`，然后设置：
 
 ```text
 SMARTCS_NOTIFICATION_OUTBOX_ENABLED=true
+SMARTCS_NOTIFICATION_OUTBOX_LEASE_DURATION_MS=120000
 ```
 
-当前 worker 按单实例运行；多实例部署前需要增加数据库抢占或改用 MQ。
+worker 通过 MySQL 租约支持多实例安全领取。每个进程可设置不同的
+`SMARTCS_NOTIFICATION_OUTBOX_WORKER_ID`；留空时自动生成。租约应长于一次 Notification HTTP 调用的最大耗时。
 
 默认保持 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=true`。只有完成 Notification
 `USER_SESSION` 通道联调后，才可将它设为 `false`；此时必须同时设置

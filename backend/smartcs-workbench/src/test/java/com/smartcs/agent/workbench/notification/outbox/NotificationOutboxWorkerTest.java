@@ -20,19 +20,21 @@ class NotificationOutboxWorkerTest {
 
     private static final Instant NOW = Instant.parse("2026-07-13T07:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    private static final String WORKER_ID = "workbench-test";
 
     @Test
     void acceptedNotificationMarksOutboxEventSent() {
         NotificationOutboxRepository repository = mock(NotificationOutboxRepository.class);
         NotificationEventClient client = mock(NotificationEventClient.class);
         NotificationOutboxEvent event = event(0);
-        when(repository.findDue(20, 5)).thenReturn(List.of(event));
+        when(repository.claimDue(WORKER_ID, 20, 5, 120_000)).thenReturn(List.of(event));
+        when(repository.markSent("ntf_test", WORKER_ID)).thenReturn(1);
         when(client.publish(event.request())).thenReturn(Optional.of(new NotificationEventResult(
                 "ntf_test", "ACCEPTED", "USER_SESSION", NOW)));
 
         worker(repository, client, 5, true).runOnce();
 
-        verify(repository).markSent("ntf_test");
+        verify(repository).markSent("ntf_test", WORKER_ID);
     }
 
     @Test
@@ -40,12 +42,16 @@ class NotificationOutboxWorkerTest {
         NotificationOutboxRepository repository = mock(NotificationOutboxRepository.class);
         NotificationEventClient client = mock(NotificationEventClient.class);
         NotificationOutboxEvent event = event(0);
-        when(repository.findDue(20, 5)).thenReturn(List.of(event));
+        when(repository.claimDue(WORKER_ID, 20, 5, 120_000)).thenReturn(List.of(event));
+        when(repository.markFailed(
+                        "ntf_test", WORKER_ID, "NOTIFICATION_PUBLISH_FAILED", NOW.plusSeconds(60)))
+                .thenReturn(1);
         when(client.publish(event.request())).thenReturn(Optional.empty());
 
         worker(repository, client, 5, true).runOnce();
 
-        verify(repository).markFailed("ntf_test", "NOTIFICATION_PUBLISH_FAILED", NOW.plusSeconds(60));
+        verify(repository).markFailed(
+                "ntf_test", WORKER_ID, "NOTIFICATION_PUBLISH_FAILED", NOW.plusSeconds(60));
     }
 
     @Test
@@ -53,12 +59,14 @@ class NotificationOutboxWorkerTest {
         NotificationOutboxRepository repository = mock(NotificationOutboxRepository.class);
         NotificationEventClient client = mock(NotificationEventClient.class);
         NotificationOutboxEvent event = event(4);
-        when(repository.findDue(20, 5)).thenReturn(List.of(event));
+        when(repository.claimDue(WORKER_ID, 20, 5, 120_000)).thenReturn(List.of(event));
+        when(repository.markFailed("ntf_test", WORKER_ID, "NOTIFICATION_PUBLISH_FAILED", null))
+                .thenReturn(1);
         when(client.publish(event.request())).thenReturn(Optional.empty());
 
         worker(repository, client, 5, true).runOnce();
 
-        verify(repository).markFailed("ntf_test", "NOTIFICATION_PUBLISH_FAILED", null);
+        verify(repository).markFailed("ntf_test", WORKER_ID, "NOTIFICATION_PUBLISH_FAILED", null);
     }
 
     @Test
@@ -83,6 +91,8 @@ class NotificationOutboxWorkerTest {
                 new NotificationOutboxRetryPolicy(),
                 20,
                 maxAttempts,
+                120_000,
+                WORKER_ID,
                 notificationEnabled,
                 CLOCK);
     }

@@ -17,6 +17,7 @@ MQ 是否引入、何时引入以及 RocketMQ 候选设计见 [notification-mq-e
   - `infra/sql/11-notification-delivery-status.sql`
   - 可选 Workbench outbox：`infra/sql/12-workbench-notification-outbox.sql`
   - Notification worker 租约：`infra/sql/13-notification-delivery-lease.sql`
+  - Workbench outbox worker 租约：`infra/sql/14-workbench-outbox-delivery-lease.sql`
 
 ## 接收通知事件
 
@@ -202,7 +203,7 @@ Workbench 当前会在以下动作成功后投递通知事件：
 - Notification 调用失败只写 warn 日志。
 - Notification 调用失败不会回滚审批或人工接管操作。
 
-启用事务 outbox 后，Workbench 不在业务事务内调用 Notification，而是把稳定 `eventId` 和完整事件请求写入 `workbench_notification_outbox`。入队失败会回滚当前工单操作；事务提交后由单实例 worker 调用 Notification，失败按有限退避重试。
+启用事务 outbox 后，Workbench 不在业务事务内调用 Notification，而是把稳定 `eventId` 和完整事件请求写入 `workbench_notification_outbox`。入队失败会回滚当前工单操作；事务提交后由支持 MySQL 租约的 worker 调用 Notification，失败按有限退避重试。
 
 ## Workbench 配置
 
@@ -217,11 +218,13 @@ smartcs:
       fixed-delay-ms: ${SMARTCS_NOTIFICATION_OUTBOX_FIXED_DELAY_MS:30000}
       batch-size: ${SMARTCS_NOTIFICATION_OUTBOX_BATCH_SIZE:20}
       max-attempts: ${SMARTCS_NOTIFICATION_OUTBOX_MAX_ATTEMPTS:5}
+      lease-duration-ms: ${SMARTCS_NOTIFICATION_OUTBOX_LEASE_DURATION_MS:120000}
+      worker-id: ${SMARTCS_NOTIFICATION_OUTBOX_WORKER_ID:}
 ```
 
 本地如果暂时不启动 `smartcs-notification`，Workbench 主流程仍可运行，只会在日志中看到通知投递失败的 warning。
 
-启用 outbox 前必须执行 `12-workbench-notification-outbox.sql`，并保持 `SMARTCS_NOTIFICATION_ENABLED=true`。outbox worker 处理 `PENDING` 和到期 `FAILED` 事件，按 1、5、15、30 分钟退避，默认最多尝试 5 次。当前实现仅支持单实例调度。
+启用 outbox 前必须依次执行 `12-workbench-notification-outbox.sql` 和 `14-workbench-outbox-delivery-lease.sql`，并保持 `SMARTCS_NOTIFICATION_ENABLED=true`。outbox worker 处理 `PENDING` 和到期 `FAILED` 事件，按 1、5、15、30 分钟退避，默认最多尝试 5 次。多个实例通过事务内 `FOR UPDATE SKIP LOCKED`、`delivery_owner` 和过期租约安全领取；成功或失败回写必须匹配领取实例。
 
 ## 内部自动重试 worker
 
@@ -252,7 +255,7 @@ SMARTCS_NOTIFICATION_RETRY_WORKER_ID=
 - 投递成功后状态变为 `DELIVERED`。
 - 投递失败后增加 `retryCount`，默认按 1、5、15、30 分钟退避。
 - 达到最大尝试次数后保留 `FAILED`，清空 `nextRetryAt`，等待人工处理。
-- Notification worker 已支持共享 MySQL 的多实例领取；Workbench outbox worker 目前仍按单实例运行。
+- Notification worker 和 Workbench outbox worker 均已支持共享 MySQL 的多实例领取与过期租约恢复。
 
 `USER_SESSION` 通道按事件 payload 执行：
 

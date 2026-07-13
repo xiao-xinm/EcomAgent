@@ -51,7 +51,11 @@ class NotificationOutboxConfigurationTest {
 
     private NotificationOutboxRepository repository() {
         NotificationOutboxRepository repository = mock(NotificationOutboxRepository.class);
-        when(repository.findDue(20, 5)).thenReturn(List.of());
+        when(repository.claimDue(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.eq(20),
+                        org.mockito.ArgumentMatchers.eq(5),
+                        org.mockito.ArgumentMatchers.eq(120_000L)))
+                .thenReturn(List.of());
         return repository;
     }
 }

@@ -245,7 +245,9 @@
 - 已新增默认关闭的幂等 `USER_SESSION` 通道；短信、邮件和 APP Push 仍未接入。
 - worker 显式开启时必须至少注册一个投递通道，否则应用启动失败，不会误消费待处理事件。
 - 已固化用户会话消息解耦迁移顺序：先做 Workbench 事务 outbox 和 `eventId` 幂等，再接 `USER_SESSION` 通道，最后灰度关闭 Workbench 直接写消息。
-- 已新增 `workbench_notification_outbox` 表、兼容发布器和默认关闭的单实例投递 worker；开启后事件随工单操作事务入队，再异步调用 Notification，失败按有限退避重试。
+- 已新增 `workbench_notification_outbox` 表、兼容发布器和默认关闭的投递 worker；开启后事件随工单操作事务入队，再异步调用 Notification，失败按有限退避重试。
+- 已新增 `infra/sql/14-workbench-outbox-delivery-lease.sql`，Workbench outbox worker 使用 `FOR UPDATE SKIP LOCKED`、实例 owner 和过期租约支持多实例安全领取。
+- 2026-07-13 已使用两个 Workbench 进程共享 MySQL 验证同一 outbox 事件只由一个实例发送，Notification 仅落一条事件，租约过期后可恢复领取。
 - Workbench 事件已补齐 `messageRole` 和 `userMessageDeliveryMode`，Notification 使用 `eventId` 派生稳定 `messageId`；历史与 `DIRECT` 事件不会重复写消息。
 - 已新增 `scripts/smoke-notification-user-session.ps1`，进程级验证正常投递、Notification 中断恢复、固定消息 ID 幂等重放和测试数据清理。
 - 2026-07-13 已完成真实 MySQL 进程联调：Notification 停止期间 Workbench 不直写消息，服务恢复后事件进入 `DELIVERED`，重复重放后用户消息仍只有一条。

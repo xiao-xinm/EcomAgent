@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Workbench 通知事务 outbox 的入队、到期查询和状态回写仓储。 */
 @Repository
@@ -39,15 +40,19 @@ public class NotificationOutboxRepository {
                 writeRequest(request));
     }
 
-    public List<NotificationOutboxEvent> findDue(int batchSize, int maxAttempts) {
-        if (batchSize <= 0 || maxAttempts <= 0) {
-            throw new IllegalArgumentException("batchSize 和 maxAttempts 必须大于 0");
-        }
-        return jdbcTemplate.query(
+    @Transactional
+    public List<NotificationOutboxEvent> claimDue(
+            String workerId,
+            int batchSize,
+            int maxAttempts,
+            long leaseDurationMs) {
+        validateClaimArguments(workerId, batchSize, maxAttempts, leaseDurationMs);
+        List<NotificationOutboxEvent> events = jdbcTemplate.query(
                 """
                 SELECT event_id, event_payload, attempt_count
                 FROM workbench_notification_outbox
                 WHERE attempt_count < ?
+                  AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
                   AND (
                     status = 'PENDING'
                     OR (status = 'FAILED' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW(3)))
@@ -55,6 +60,7 @@ public class NotificationOutboxRepository {
                 ORDER BY CASE status WHEN 'PENDING' THEN 0 ELSE 1 END,
                          COALESCE(next_attempt_at, created_at), created_at, event_id
                 LIMIT ?
+                FOR UPDATE SKIP LOCKED
                 """,
                 (rs, rowNum) -> new NotificationOutboxEvent(
                         rs.getString("event_id"),
@@ -62,9 +68,29 @@ public class NotificationOutboxRepository {
                         rs.getInt("attempt_count")),
                 maxAttempts,
                 batchSize);
+        long leaseDurationMicros = Math.multiplyExact(leaseDurationMs, 1000L);
+        for (NotificationOutboxEvent event : events) {
+            int claimed = jdbcTemplate.update(
+                    """
+                    UPDATE workbench_notification_outbox
+                    SET delivery_owner = ?,
+                        delivery_lease_until = TIMESTAMPADD(MICROSECOND, ?, NOW(3)),
+                        updated_at = NOW(3)
+                    WHERE event_id = ?
+                      AND status IN ('PENDING', 'FAILED')
+                      AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
+                    """,
+                    workerId,
+                    leaseDurationMicros,
+                    event.eventId());
+            if (claimed != 1) {
+                throw new IllegalStateException("通知 outbox 事件租约领取失败: " + event.eventId());
+            }
+        }
+        return events;
     }
 
-    public int markSent(String eventId) {
+    public int markSent(String eventId, String workerId) {
         return jdbcTemplate.update(
                 """
                 UPDATE workbench_notification_outbox
@@ -72,14 +98,18 @@ public class NotificationOutboxRepository {
                     last_error = NULL,
                     next_attempt_at = NULL,
                     sent_at = NOW(3),
+                    delivery_owner = NULL,
+                    delivery_lease_until = NULL,
                     updated_at = NOW(3)
                 WHERE event_id = ?
                   AND status IN ('PENDING', 'FAILED')
+                  AND delivery_owner = ?
                 """,
-                eventId);
+                eventId,
+                workerId);
     }
 
-    public int markFailed(String eventId, String errorMessage, Instant nextAttemptAt) {
+    public int markFailed(String eventId, String workerId, String errorMessage, Instant nextAttemptAt) {
         return jdbcTemplate.update(
                 """
                 UPDATE workbench_notification_outbox
@@ -88,13 +118,34 @@ public class NotificationOutboxRepository {
                     last_error = ?,
                     next_attempt_at = ?,
                     sent_at = NULL,
+                    delivery_owner = NULL,
+                    delivery_lease_until = NULL,
                     updated_at = NOW(3)
                 WHERE event_id = ?
                   AND status IN ('PENDING', 'FAILED')
+                  AND delivery_owner = ?
                 """,
                 normalizeError(errorMessage),
                 nextAttemptAt == null ? null : Timestamp.from(nextAttemptAt),
-                eventId);
+                eventId,
+                workerId);
+    }
+
+    private void validateClaimArguments(
+            String workerId,
+            int batchSize,
+            int maxAttempts,
+            long leaseDurationMs) {
+        if (workerId == null || workerId.isBlank() || workerId.length() > 64) {
+            throw new IllegalArgumentException("workerId 必须为 1 至 64 个字符");
+        }
+        if (batchSize <= 0 || maxAttempts <= 0) {
+            throw new IllegalArgumentException("batchSize 和 maxAttempts 必须大于 0");
+        }
+        if (leaseDurationMs < 1000) {
+            throw new IllegalArgumentException("leaseDurationMs 不能小于 1000");
+        }
+        Math.multiplyExact(leaseDurationMs, 1000L);
     }
 
     private String writeRequest(NotificationEventRequest request) {

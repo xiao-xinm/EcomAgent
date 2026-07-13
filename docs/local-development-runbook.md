@@ -64,6 +64,7 @@ mysql -u root -p smartcs_agent < 10-notification-event-store.sql
 mysql -u root -p smartcs_agent < 11-notification-delivery-status.sql
 mysql -u root -p smartcs_agent < 12-workbench-notification-outbox.sql
 mysql -u root -p smartcs_agent < 13-notification-delivery-lease.sql
+mysql -u root -p smartcs_agent < 14-workbench-outbox-delivery-lease.sql
 ```
 
 ## 4. 启动后端服务
@@ -100,12 +101,15 @@ SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS=120000
 启用 Notification worker 前必须执行 13 号迁移。多实例部署时每个进程可以设置不同的
 `SMARTCS_NOTIFICATION_RETRY_WORKER_ID`；留空会自动生成。租约应长于单次通道调用的最大耗时。
 
-Workbench 通知 outbox 也默认关闭，关闭时保持原有同步 HTTP 辅助链路。需要验证事务 outbox 时，先执行 `12-workbench-notification-outbox.sql`，同时启动 Workbench 与 Notification，再设置：
+Workbench 通知 outbox 也默认关闭，关闭时保持原有同步 HTTP 辅助链路。需要验证事务 outbox 时，依次执行 `12-workbench-notification-outbox.sql` 和 `14-workbench-outbox-delivery-lease.sql`，同时启动 Workbench 与 Notification，再设置：
 
 ```text
 SMARTCS_NOTIFICATION_OUTBOX_ENABLED=true
 SMARTCS_NOTIFICATION_ENABLED=true
+SMARTCS_NOTIFICATION_OUTBOX_LEASE_DURATION_MS=120000
 ```
+
+多实例部署时每个 Workbench 进程可以设置不同的 `SMARTCS_NOTIFICATION_OUTBOX_WORKER_ID`；留空会自动生成。租约应长于一次 Notification HTTP 调用的最大耗时。
 
 仅验证 outbox 时，Workbench 仍直接写用户可见 `cs_message`。验证完整解耦迁移时，在上述配置基础上再设置：
 

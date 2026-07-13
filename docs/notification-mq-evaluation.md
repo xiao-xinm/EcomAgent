@@ -100,7 +100,7 @@ SMARTCS_NOTIFICATION_RETRY_ENABLED=true
 SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=true
 ```
 
-这条迁移路径仍只需要 MySQL。Notification 消费侧已解决基础多实例抢占；Workbench outbox 仍需完成同类租约改造。只有在吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
+这条迁移路径仍只需要 MySQL。Notification 消费侧和 Workbench outbox 均已通过事务锁、实例 owner 与过期租约解决基础多实例抢占。只有在吞吐或跨服务订阅成为实际问题时，才进入 RocketMQ 评审。
 
 ## 5. 引入 RocketMQ 的触发条件
 

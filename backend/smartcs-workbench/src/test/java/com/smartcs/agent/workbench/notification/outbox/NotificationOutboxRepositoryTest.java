@@ -1,6 +1,7 @@
 package com.smartcs.agent.workbench.notification.outbox;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -35,7 +36,7 @@ class NotificationOutboxRepositoryTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void findDueMapsStoredRequestAndAttemptCount() throws Exception {
+    void claimDueMapsStoredRequestAndAcquiresLease() throws Exception {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         NotificationOutboxRepository repository = repository(jdbcTemplate);
         ObjectMapper mapper = mapper();
@@ -48,14 +49,16 @@ class NotificationOutboxRepositoryTest {
                     RowMapper<NotificationOutboxEvent> rowMapper = invocation.getArgument(1);
                     return List.of(rowMapper.mapRow(resultSet, 0));
                 });
+        when(jdbcTemplate.update(contains("SET delivery_owner"), any(Object[].class))).thenReturn(1);
 
-        List<NotificationOutboxEvent> events = repository.findDue(20, 5);
+        List<NotificationOutboxEvent> events = repository.claimDue("workbench-test", 20, 5, 120_000);
 
         assertThat(events).hasSize(1);
         assertThat(events.get(0).eventId()).isEqualTo("ntf_test");
         assertThat(events.get(0).attemptCount()).isEqualTo(2);
         assertThat(events.get(0).request().ticketId()).isEqualTo("wo_test");
         assertThat(events.get(0).request().payload()).containsEntry("decision", "APPROVED");
+        verify(jdbcTemplate).update(contains("SET delivery_owner"), any(Object[].class));
     }
 
     @Test
@@ -63,11 +66,23 @@ class NotificationOutboxRepositoryTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         NotificationOutboxRepository repository = repository(jdbcTemplate);
 
-        repository.markSent("ntf_test");
-        repository.markFailed("ntf_test", "temporary failure", null);
+        repository.markSent("ntf_test", "workbench-test");
+        repository.markFailed("ntf_test", "workbench-test", "temporary failure", null);
 
         verify(jdbcTemplate).update(contains("status = 'SENT'"), any(Object[].class));
         verify(jdbcTemplate).update(contains("status = 'FAILED'"), any(Object[].class));
+    }
+
+    @Test
+    void claimDueRejectsInvalidLeaseArguments() {
+        NotificationOutboxRepository repository = repository(mock(JdbcTemplate.class));
+
+        assertThatThrownBy(() -> repository.claimDue("", 20, 5, 120_000))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("workerId");
+        assertThatThrownBy(() -> repository.claimDue("workbench-test", 20, 5, 999))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("leaseDurationMs");
     }
 
     private NotificationOutboxRepository repository(JdbcTemplate jdbcTemplate) {

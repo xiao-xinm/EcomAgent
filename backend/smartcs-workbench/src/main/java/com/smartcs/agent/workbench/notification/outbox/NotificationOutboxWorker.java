@@ -6,6 +6,7 @@ import com.smartcs.agent.workbench.notification.outbox.NotificationOutboxRetryPo
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 单实例 Workbench 通知 outbox 投递 worker。 */
+/** 支持数据库租约的 Workbench 通知 outbox 投递 worker。 */
 @Component
 @ConditionalOnProperty(name = "smartcs.notification.outbox.enabled", havingValue = "true")
 public class NotificationOutboxWorker {
@@ -27,6 +28,8 @@ public class NotificationOutboxWorker {
     private final NotificationOutboxRetryPolicy retryPolicy;
     private final int batchSize;
     private final int maxAttempts;
+    private final long leaseDurationMs;
+    private final String workerId;
     private final Clock clock;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -36,6 +39,8 @@ public class NotificationOutboxWorker {
             NotificationEventClient client,
             @Value("${smartcs.notification.outbox.batch-size:20}") int batchSize,
             @Value("${smartcs.notification.outbox.max-attempts:5}") int maxAttempts,
+            @Value("${smartcs.notification.outbox.lease-duration-ms:120000}") long leaseDurationMs,
+            @Value("${smartcs.notification.outbox.worker-id:}") String configuredWorkerId,
             @Value("${smartcs.notification.enabled:true}") boolean notificationEnabled) {
         this(
                 repository,
@@ -43,6 +48,8 @@ public class NotificationOutboxWorker {
                 new NotificationOutboxRetryPolicy(),
                 batchSize,
                 maxAttempts,
+                leaseDurationMs,
+                resolveWorkerId(configuredWorkerId),
                 notificationEnabled,
                 Clock.systemUTC());
     }
@@ -53,10 +60,15 @@ public class NotificationOutboxWorker {
             NotificationOutboxRetryPolicy retryPolicy,
             int batchSize,
             int maxAttempts,
+            long leaseDurationMs,
+            String workerId,
             boolean notificationEnabled,
             Clock clock) {
-        if (batchSize <= 0 || maxAttempts <= 0) {
-            throw new IllegalArgumentException("batchSize 和 maxAttempts 必须大于 0");
+        if (batchSize <= 0 || maxAttempts <= 0 || leaseDurationMs < 1000) {
+            throw new IllegalArgumentException("batchSize、maxAttempts 必须大于 0，leaseDurationMs 不能小于 1000");
+        }
+        if (workerId == null || workerId.isBlank() || workerId.length() > 64) {
+            throw new IllegalArgumentException("workerId 必须为 1 至 64 个字符");
         }
         if (!notificationEnabled) {
             throw new IllegalArgumentException("启用通知 outbox 时必须同时启用 Notification 客户端");
@@ -66,6 +78,8 @@ public class NotificationOutboxWorker {
         this.retryPolicy = retryPolicy;
         this.batchSize = batchSize;
         this.maxAttempts = maxAttempts;
+        this.leaseDurationMs = leaseDurationMs;
+        this.workerId = workerId;
         this.clock = clock;
     }
 
@@ -76,9 +90,14 @@ public class NotificationOutboxWorker {
             return;
         }
         try {
-            List<NotificationOutboxEvent> events = repository.findDue(batchSize, maxAttempts);
+            List<NotificationOutboxEvent> events =
+                    repository.claimDue(workerId, batchSize, maxAttempts, leaseDurationMs);
             if (!events.isEmpty()) {
-                LOGGER.info("Notification outbox batch started eventCount={}", events.size());
+                LOGGER.info(
+                        "Notification outbox batch started workerId={} eventCount={} leaseDurationMs={}",
+                        LogFields.value(workerId),
+                        events.size(),
+                        leaseDurationMs);
             }
             events.forEach(this::deliver);
         } finally {
@@ -89,7 +108,14 @@ public class NotificationOutboxWorker {
     private void deliver(NotificationOutboxEvent event) {
         try {
             if (client.publish(event.request()).isPresent()) {
-                repository.markSent(event.eventId());
+                int updated = repository.markSent(event.eventId(), workerId);
+                if (updated != 1) {
+                    LOGGER.warn(
+                            "Notification outbox delivery result ignored because lease ownership changed eventId={} workerId={}",
+                            LogFields.value(event.eventId()),
+                            LogFields.value(workerId));
+                    return;
+                }
                 LOGGER.info(
                         "Notification outbox delivered eventId={} eventType={} attempt={} traceId={} ticketId={}",
                         LogFields.value(event.eventId()),
@@ -110,7 +136,14 @@ public class NotificationOutboxWorker {
                 event.attemptCount(),
                 maxAttempts,
                 Instant.now(clock));
-        repository.markFailed(event.eventId(), message, decision.nextAttemptAt());
+        int updated = repository.markFailed(event.eventId(), workerId, message, decision.nextAttemptAt());
+        if (updated != 1) {
+            LOGGER.warn(
+                    "Notification outbox failure result ignored because lease ownership changed eventId={} workerId={}",
+                    LogFields.value(event.eventId()),
+                    LogFields.value(workerId));
+            return;
+        }
         LOGGER.warn(
                 "Notification outbox delivery failed eventId={} attempt={} exhausted={} nextAttemptAt={} reason={}",
                 LogFields.value(event.eventId()),
@@ -123,5 +156,12 @@ public class NotificationOutboxWorker {
     private String safeMessage(RuntimeException exception) {
         String message = exception.getMessage();
         return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
+    }
+
+    private static String resolveWorkerId(String configuredWorkerId) {
+        if (configuredWorkerId != null && !configuredWorkerId.isBlank()) {
+            return configuredWorkerId.trim();
+        }
+        return "workbench-" + UUID.randomUUID();
     }
 }
