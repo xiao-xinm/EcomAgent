@@ -47,6 +47,24 @@ public class KnowledgeIndexSynchronizer {
         return summary;
     }
 
+    /**
+     * 非破坏性地重放 FAQ 文档，不清空 Elasticsearch 或 pgvector 中的现有索引。
+     */
+    public IndexSyncSummary repair(List<FaqItem> faqs) {
+        if (writers.isEmpty()) {
+            return IndexSyncSummary.disabled();
+        }
+        List<IndexOperationResult> operations = new ArrayList<>();
+        for (KnowledgeIndexWriter writer : writers) {
+            for (FaqItem faq : faqs) {
+                operations.add(safeUpsert(writer, toDocument(faq)));
+            }
+        }
+        IndexSyncSummary summary = summarize(faqs.size(), operations);
+        logSummary("repair", summary);
+        return summary;
+    }
+
     public IndexSyncSummary rebuild(List<FaqItem> faqs) {
         if (writers.isEmpty()) {
             return IndexSyncSummary.disabled();

@@ -17,6 +17,8 @@ import type {
   FaqStatus,
   FaqStatusRequest,
   FaqUpsertRequest,
+  IndexRepairRequest,
+  IndexSyncSummary,
 } from "../types/knowledge";
 
 const AUTH_ERROR_MESSAGES: Record<AuthFailureReason, string> = {
@@ -174,4 +176,10 @@ export async function updateFaqStatus(
 ): Promise<FaqItem> {
   const body: FaqStatusRequest = { status };
   return unwrap(knowledgeClient.post(`/api/knowledge/faq/${faqId}/status`, body));
+}
+
+export async function repairFaqIndexes(
+  body: IndexRepairRequest = {},
+): Promise<IndexSyncSummary> {
+  return unwrap(knowledgeClient.post("/api/knowledge/faq/index/repair", body));
 }

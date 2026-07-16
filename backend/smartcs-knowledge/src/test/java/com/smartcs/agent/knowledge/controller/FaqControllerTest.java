@@ -10,6 +10,7 @@ import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqItem;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
+import com.smartcs.agent.knowledge.dto.FaqAdminDtos.IndexRepairRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
 import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer.IndexSyncSummary;
@@ -113,6 +114,22 @@ class FaqControllerTest {
         assertThat(response.data()).isSameAs(summary);
         assertThat(response.data().documentCount()).isEqualTo(7);
         verify(faqKnowledgeService).rebuildIndexes();
+    }
+
+    @Test
+    void repairIndexReturnsOperationSummary() {
+        FaqKnowledgeService faqKnowledgeService = mock(FaqKnowledgeService.class);
+        FaqController controller = new FaqController(faqKnowledgeService);
+        IndexRepairRequest request = new IndexRepairRequest(List.of("faq_refund_arrival"));
+        IndexSyncSummary summary = new IndexSyncSummary(true, 1, 2, 0, List.of());
+        when(faqKnowledgeService.repairIndexes(request)).thenReturn(summary);
+
+        ApiResponse<IndexSyncSummary> response = controller.repairIndex(request);
+
+        assertThat(response.code()).isEqualTo("0000");
+        assertThat(response.data()).isSameAs(summary);
+        assertThat(response.data().documentCount()).isEqualTo(1);
+        verify(faqKnowledgeService).repairIndexes(request);
     }
 
     private FaqItem faqItem(String faqId, String status) {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,10 +48,56 @@ class KnowledgeIndexSynchronizerTest {
     }
 
     @Test
+    void repairUpsertsEveryDocumentWithoutResettingIndexes() {
+        KnowledgeIndexWriter elasticsearch = writer("elasticsearch");
+        KnowledgeIndexWriter pgvector = writer("pgvector");
+        KnowledgeIndexSynchronizer synchronizer =
+                new KnowledgeIndexSynchronizer(List.of(elasticsearch, pgvector));
+
+        KnowledgeIndexSynchronizer.IndexSyncSummary summary =
+                synchronizer.repair(List.of(faq("ACTIVE"), faq("DISABLED")));
+
+        assertThat(summary.documentCount()).isEqualTo(2);
+        assertThat(summary.successCount()).isEqualTo(4);
+        assertThat(summary.failureCount()).isZero();
+        verify(elasticsearch, never()).reset();
+        verify(pgvector, never()).reset();
+        verify(elasticsearch, times(2)).upsert(any(FaqIndexDocument.class));
+        verify(pgvector, times(2)).upsert(any(FaqIndexDocument.class));
+    }
+
+    @Test
+    void repairContinuesOtherWritersWhenOneWriterThrows() {
+        KnowledgeIndexWriter elasticsearch = writer("elasticsearch");
+        KnowledgeIndexWriter pgvector = writer("pgvector");
+        when(elasticsearch.upsert(any(FaqIndexDocument.class)))
+                .thenThrow(new IllegalStateException("elasticsearch unavailable"));
+        KnowledgeIndexSynchronizer synchronizer =
+                new KnowledgeIndexSynchronizer(List.of(elasticsearch, pgvector));
+
+        KnowledgeIndexSynchronizer.IndexSyncSummary summary =
+                synchronizer.repair(List.of(faq("ACTIVE"), faq("DISABLED")));
+
+        assertThat(summary.successCount()).isEqualTo(2);
+        assertThat(summary.failureCount()).isEqualTo(2);
+        verify(pgvector, times(2)).upsert(any(FaqIndexDocument.class));
+    }
+
+    @Test
     void synchronizeIsDisabledWhenHybridWritersAreAbsent() {
         KnowledgeIndexSynchronizer synchronizer = new KnowledgeIndexSynchronizer(List.of());
 
         KnowledgeIndexSynchronizer.IndexSyncSummary summary = synchronizer.synchronize(faq("ACTIVE"));
+
+        assertThat(summary.enabled()).isFalse();
+        assertThat(summary.operations()).isEmpty();
+    }
+
+    @Test
+    void repairIsDisabledWhenHybridWritersAreAbsent() {
+        KnowledgeIndexSynchronizer synchronizer = new KnowledgeIndexSynchronizer(List.of());
+
+        KnowledgeIndexSynchronizer.IndexSyncSummary summary = synchronizer.repair(List.of(faq("ACTIVE")));
 
         assertThat(summary.enabled()).isFalse();
         assertThat(summary.operations()).isEmpty();

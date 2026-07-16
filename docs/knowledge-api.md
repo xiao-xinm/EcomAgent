@@ -170,6 +170,33 @@ Content-Type: application/json; charset=utf-8
 - `ACTIVE`：启用，参与用户查询。
 - `DISABLED`：停用，不参与用户查询。
 
+### 修复混合检索索引
+
+```http
+POST /api/knowledge/faq/index/repair
+Content-Type: application/json; charset=utf-8
+```
+
+该接口从 MySQL 权威数据源重放 FAQ 到 Elasticsearch 和 pgvector，但不会清空现有索引。适合索引短暂不可用恢复后补写、文档数量不一致修复和指定 FAQ 重试。同步 `DISABLED` FAQ 时，Elasticsearch 会保留其非启用状态，pgvector 会删除对应向量。
+
+请求体可省略或传空对象，此时修复全部 FAQ：
+
+```json
+{}
+```
+
+也可以指定最多 100 个 FAQ ID；ID 会去重，任一 ID 不存在时请求失败且不开始修复：
+
+```json
+{
+  "faqIds": ["faq_refund_arrival", "faq_return_policy"]
+}
+```
+
+响应结构与全量重建相同。`documentCount` 表示本次重放的 FAQ 数，`operations` 记录每个检索写入器的结果。`failureCount>0` 时其他写入器和文档仍会继续处理，可在依赖恢复后再次调用；接口具备幂等性。
+
+坐席工作台 FAQ 管理页提供“修复索引”入口。该操作会调用 DashScope 重新生成语义向量，执行前应确认 ES、pgvector 和 DashScope 可用。
+
 ### 重建混合检索索引
 
 ```http
@@ -198,7 +225,7 @@ POST /api/knowledge/faq/index/rebuild
 }
 ```
 
-`enabled=false` 表示当前仍是 `keyword` 模式。`failureCount>0` 表示部分检索副本失败，应查看 `operations` 并在依赖恢复后重新执行。
+`enabled=false` 表示当前仍是 `keyword` 模式。`failureCount>0` 表示部分检索副本失败，应查看 `operations` 并在依赖恢复后优先执行非破坏性修复；只有索引结构需要重置时才执行全量重建。
 
 ### 查询混合索引状态
 

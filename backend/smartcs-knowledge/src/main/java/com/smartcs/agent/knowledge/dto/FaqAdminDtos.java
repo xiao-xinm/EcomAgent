@@ -38,4 +38,12 @@ public final class FaqAdminDtos {
             String status
     ) {
     }
+
+    /**
+     * 知识索引增量修复请求。faqIds 为空时修复全部 FAQ，非空时仅修复指定 FAQ。
+     */
+    public record IndexRepairRequest(
+            List<String> faqIds
+    ) {
+    }
 }

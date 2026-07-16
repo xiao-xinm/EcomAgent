@@ -17,6 +17,7 @@ import {
   PlusOutlined,
   StopOutlined,
   CheckCircleOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import type { ActionType, ProColumns } from "@ant-design/pro-components";
 import { ProTable } from "@ant-design/pro-components";
@@ -24,6 +25,7 @@ import dayjs from "dayjs";
 import {
   createFaq,
   fetchFaqs,
+  repairFaqIndexes,
   updateFaq,
   updateFaqStatus,
 } from "../../services/knowledgeApi";
@@ -58,6 +60,7 @@ const FaqManagement: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<FaqItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   const openCreate = () => {
     setEditingRecord(null);
@@ -110,6 +113,26 @@ const FaqManagement: React.FC = () => {
       actionRef.current?.reload();
     } catch (error) {
       message.error((error as Error).message || "状态更新失败");
+    }
+  };
+
+  const handleRepairIndexes = async () => {
+    setRepairing(true);
+    try {
+      const result = await repairFaqIndexes();
+      if (!result.enabled) {
+        message.info("当前未启用混合检索索引，无需修复");
+      } else if (result.failureCount > 0) {
+        message.warning(
+          `索引修复部分失败：成功 ${result.successCount} 项，失败 ${result.failureCount} 项`,
+        );
+      } else {
+        message.success(`索引修复完成：${result.documentCount} 条 FAQ`);
+      }
+    } catch (error) {
+      message.error((error as Error).message || "索引修复失败");
+    } finally {
+      setRepairing(false);
     }
   };
 
@@ -258,6 +281,18 @@ const FaqManagement: React.FC = () => {
         }}
         toolbar={{
           actions: [
+            <Popconfirm
+              key="repair"
+              title="修复知识索引"
+              description="将 MySQL 中的 FAQ 重新同步到 ES 和 pgvector，不会清空现有索引；过程会调用向量模型。"
+              okText="开始修复"
+              cancelText="取消"
+              onConfirm={handleRepairIndexes}
+            >
+              <Button icon={<SyncOutlined />} loading={repairing}>
+                修复索引
+              </Button>
+            </Popconfirm>,
             <Button
               key="create"
               type="primary"

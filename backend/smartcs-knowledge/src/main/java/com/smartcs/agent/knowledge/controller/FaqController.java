@@ -6,6 +6,7 @@ import com.smartcs.agent.common.util.TraceIds;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqItem;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
+import com.smartcs.agent.knowledge.dto.FaqAdminDtos.IndexRepairRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
 import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer.IndexSyncSummary;
@@ -132,6 +133,23 @@ public class FaqController {
         IndexSyncSummary result = faqKnowledgeService.rebuildIndexes();
         LOGGER.info(
                 "FAQ index rebuild completed traceId={} enabled={} documentCount={} successCount={} failureCount={}",
+                traceId,
+                result.enabled(),
+                result.documentCount(),
+                result.successCount(),
+                result.failureCount());
+        return ApiResponse.success(result, traceId);
+    }
+
+    @PostMapping("/index/repair")
+    public ApiResponse<IndexSyncSummary> repairIndex(
+            @RequestBody(required = false) IndexRepairRequest request) {
+        String traceId = TraceIds.newTraceId();
+        int requestedCount = request == null || request.faqIds() == null ? 0 : request.faqIds().size();
+        LOGGER.info("FAQ index repair requested traceId={} requestedCount={}", traceId, requestedCount);
+        IndexSyncSummary result = faqKnowledgeService.repairIndexes(request);
+        LOGGER.info(
+                "FAQ index repair completed traceId={} enabled={} documentCount={} successCount={} failureCount={}",
                 traceId,
                 result.enabled(),
                 result.documentCount(),

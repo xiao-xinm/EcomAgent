@@ -122,6 +122,63 @@ test('workstation renders notification events', async ({ page }) => {
   await expect(page.getByRole('cell', { name: '2', exact: true })).toBeVisible()
 })
 
+test('workstation can repair FAQ indexes without rebuilding them', async ({ page }) => {
+  let repairCalled = false
+
+  await page.route('**/api/knowledge/faq/index/repair', async (route) => {
+    repairCalled = true
+    expect(route.request().postDataJSON()).toEqual({})
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        enabled: true,
+        documentCount: 1,
+        successCount: 2,
+        failureCount: 0,
+        operations: [
+          { writer: 'elasticsearch', success: true, message: 'upserted' },
+          { writer: 'pgvector', success: true, message: 'upserted' },
+        ],
+      })),
+    })
+  })
+
+  await page.route('**/api/knowledge/faq?**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        records: [
+          {
+            faqId: 'faq_e2e_refund',
+            question: '退款多久到账',
+            answer: '审核通过后通常会在 1-3 个工作日内原路退回。',
+            keywords: ['退款', '到账'],
+            category: 'after_sale',
+            status: 'ACTIVE',
+            priority: 100,
+            createdAt: '2026-07-10T12:00:00Z',
+            updatedAt: '2026-07-10T12:00:00Z',
+          },
+        ],
+        total: 1,
+        pageNo: 1,
+        pageSize: 20,
+      })),
+    })
+  })
+
+  await page.goto('/knowledge/faq')
+
+  await expect(page.getByText('退款多久到账')).toBeVisible()
+  await page.getByRole('button', { name: '修复索引' }).click()
+  await expect(page.getByText('修复知识索引')).toBeVisible()
+  await page.getByRole('button', { name: '开始修复' }).click()
+  await expect.poll(() => repairCalled).toBe(true)
+  await expect(page.getByText('索引修复完成：1 条 FAQ')).toBeVisible()
+})
+
 test('workstation renders ticket list and can claim a pending ticket', async ({ page }) => {
   let claimCalled = false
 

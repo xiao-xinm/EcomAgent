@@ -7,6 +7,7 @@ import com.smartcs.agent.common.dto.PageResult;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqItem;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqStatusRequest;
 import com.smartcs.agent.knowledge.dto.FaqAdminDtos.FaqUpsertRequest;
+import com.smartcs.agent.knowledge.dto.FaqAdminDtos.IndexRepairRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryRequest;
 import com.smartcs.agent.knowledge.dto.FaqQueryDtos.FaqQueryResponse;
 import com.smartcs.agent.knowledge.indexing.KnowledgeIndexSynchronizer;
@@ -19,6 +20,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -275,6 +277,66 @@ public class FaqKnowledgeService {
                 """,
                 (rs, rowNum) -> mapFaqItem(rs));
         return indexSynchronizer.rebuild(faqs);
+    }
+
+    /**
+     * 将 MySQL 中的 FAQ 非破坏性地重放到已启用的检索索引。
+     */
+    public IndexSyncSummary repairIndexes(IndexRepairRequest request) {
+        if (indexSynchronizer == null) {
+            return IndexSyncSummary.disabled();
+        }
+        List<String> faqIds = normalizeRepairFaqIds(request);
+        List<FaqItem> faqs = faqIds.isEmpty()
+                ? queryAllFaqsForIndexing()
+                : queryFaqsForIndexing(faqIds);
+        if (!faqIds.isEmpty()) {
+            List<String> missingFaqIds = new ArrayList<>(faqIds);
+            faqs.forEach(faq -> missingFaqIds.remove(faq.faqId()));
+            if (!missingFaqIds.isEmpty()) {
+                throw new IllegalArgumentException("FAQ 不存在: " + String.join(", ", missingFaqIds));
+            }
+        }
+        return indexSynchronizer.repair(faqs);
+    }
+
+    private List<FaqItem> queryAllFaqsForIndexing() {
+        return jdbcTemplate.query(
+                """
+                SELECT faq_id, question, answer, keywords, category, status, priority, created_at, updated_at
+                FROM knowledge_faq
+                ORDER BY priority DESC, updated_at DESC, faq_id ASC
+                """,
+                (rs, rowNum) -> mapFaqItem(rs));
+    }
+
+    private List<FaqItem> queryFaqsForIndexing(List<String> faqIds) {
+        String placeholders = String.join(", ", java.util.Collections.nCopies(faqIds.size(), "?"));
+        return jdbcTemplate.query(
+                """
+                SELECT faq_id, question, answer, keywords, category, status, priority, created_at, updated_at
+                FROM knowledge_faq
+                WHERE faq_id IN (
+                """
+                        + placeholders
+                        + """
+                )
+                ORDER BY priority DESC, updated_at DESC, faq_id ASC
+                """,
+                (rs, rowNum) -> mapFaqItem(rs),
+                faqIds.toArray());
+    }
+
+    private List<String> normalizeRepairFaqIds(IndexRepairRequest request) {
+        if (request == null || request.faqIds() == null || request.faqIds().isEmpty()) {
+            return List.of();
+        }
+        if (request.faqIds().size() > 100) {
+            throw new IllegalArgumentException("单次最多修复 100 个 FAQ");
+        }
+        LinkedHashSet<String> normalizedFaqIds = new LinkedHashSet<>();
+        request.faqIds().forEach(faqId -> normalizedFaqIds.add(requireText(faqId, "faqId")));
+        return List.copyOf(normalizedFaqIds);
     }
 
     private List<FaqEntry> activeFaqEntries() {

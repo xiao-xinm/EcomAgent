@@ -37,4 +37,22 @@ export interface FaqStatusRequest {
   status: FaqStatus;
 }
 
+export interface IndexRepairRequest {
+  faqIds?: string[];
+}
+
+export interface IndexOperationResult {
+  writer: string;
+  success: boolean;
+  message: string;
+}
+
+export interface IndexSyncSummary {
+  enabled: boolean;
+  documentCount: number;
+  successCount: number;
+  failureCount: number;
+  operations: IndexOperationResult[];
+}
+
 export type FaqPageResult = PageResult<FaqItem>;
