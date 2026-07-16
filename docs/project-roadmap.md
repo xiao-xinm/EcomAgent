@@ -34,18 +34,19 @@
 | `smartcs-gateway` | 已具备用户聊天入口、会话查询、CORS 和日志基础 |
 | `smartcs-agent-core` | 已具备意图识别、风险路由、确认链路、人工工单创建 |
 | `smartcs-skill-engine` | 已具备订单查询、物流查询、修改地址、取消订单等最小技能 |
-| `smartcs-workbench` | 已具备工单处理、人工接管、通知 outbox、FAQ 管理和运营摘要 |
+| `smartcs-workbench` | 已具备工单处理、人工接管、通知 outbox、FAQ 管理、运营摘要和可选工单 SSE |
 | `smartcs-knowledge` | 已具备 FAQ 管理、ES + pgvector 混合检索、索引状态与非破坏性修复 |
 | `smartcs-notification` | 已具备通知落库、租约重试、`USER_SESSION` 幂等投递和运行摘要 |
-| `frontend/client-h5` | 已具备聊天、短轮询、快捷动作、地址确认表单、状态展示和 Token Provider 骨架 |
+| `frontend/client-h5` | 已具备聊天、默认短轮询、可选 SSE、快捷动作、地址确认表单、状态展示和 Token Provider 骨架 |
 | `frontend/app-h5` | 已具备复用用户端聊天能力的 APP 内嵌入口和 Token Provider 骨架 |
-| `frontend/workstation` | 已具备坐席工作台最小闭环和 Token Provider 骨架 |
+| `frontend/workstation` | 已具备坐席工作台最小闭环、可选工单 SSE 和 Token Provider 骨架 |
 | `docs/e2e-acceptance-checklist.md` | 已沉淀最小闭环验收清单 |
 
 当前基础链路仍保持轻量本地架构：
 
 - 使用 MySQL。
-- 用户端消息同步使用短轮询。
+- 用户端消息同步默认使用短轮询，可配置启用 SSE 并在失败后回退轮询。
+- 坐席端默认保留手动刷新和操作后刷新，可配置启用工单 SSE 提醒。
 - 非知识检索链路暂不强制启用 Redis、RocketMQ、WebSocket。
 - Phase 5 混合检索环境已确认：PostgreSQL 16 + pgvector 0.8.2、Elasticsearch 8.15.0 + `analysis-smartcn`、DashScope `text-embedding-v4`。
 - 退款、换货等敏感业务不自动执行，只走人工审核或人工接管。
@@ -127,7 +128,7 @@
 
 ### Phase 3. 坐席工作台增强
 
-状态：下一优先级。
+状态：基础版已完成，后续只按真实运营需求继续增强。
 
 目标：
 
@@ -142,14 +143,21 @@
 4. 操作日志增加更清晰的审计展示。（已完成基础覆盖）
 5. 增加基础统计视图：待处理、处理中、已完成、超时风险。（已完成基础覆盖）
 
+完成证据：
+
+- 工单列表已覆盖状态、风险、意图、坐席、优先级和时间范围筛选。
+- 工单详情已覆盖内部备注、人工消息、审批结论和审计时间线。
+- 列表、详情、通知事件和知识管理页面已有 Playwright E2E；坐席工单 SSE 已覆盖列表与详情刷新场景。
+
 中间件要求：
 
 - 第一轮不需要新增中间件。
-- 若要做实时坐席提醒，再评估 WebSocket 或 SSE。
+- 实时坐席提醒已选择共享 MySQL 增量扫描 + SSE，不需要新增中间件。
+- 只有进入双向人工聊天、在线状态等场景时才重新评估 WebSocket 和跨实例广播设施。
 
 ### Phase 4. 敏感业务工单细化
 
-状态：进行中，退款、换货字段和审批结论结构基础覆盖已完成。
+状态：基础版已完成；真实支付、仓储、退款和换货系统集成不属于当前范围。
 
 目标：
 
@@ -163,6 +171,12 @@
 3. 增加工单审批结论结构：通过、驳回、补充材料、转人工接管。（已完成基础覆盖）
 4. 更新 `docs/workbench-api.md` 和前端展示。（退款、换货、审批结论场景已完成基础覆盖）
 5. 增加对应 E2E 验收场景。（退款、换货、审批结论场景已完成基础覆盖）
+
+完成证据：
+
+- 退款与换货申请上下文已进入人工审核工单并在坐席详情展示。
+- 审批已覆盖通过、驳回、补充材料和转人工接管。
+- 页面 E2E 已覆盖退款字段、换货字段、补充材料和转人工接管。
 
 中间件要求：
 
@@ -303,7 +317,7 @@
 当前进展：
 
 - 已新增实时消息方案评估文档：`docs/realtime-messaging-evaluation.md`。
-- 当前结论是继续保留短轮询，后续如要提升实时体验，优先做用户端 SSE 试点，不立即实现 WebSocket。
+- 当前结论是保留短轮询和手动刷新作为稳定基线，用户端与坐席端 SSE 均默认关闭，不立即实现 WebSocket。
 - 已完成 SSE 最小技术尖刺：Gateway 提供 `GET /api/chat/sessions/{sessionId}/events`，用户端 H5 可配置开启 SSE，失败后回退短轮询。
 - Workbench 已新增默认关闭的 `GET /api/workbench/tickets/events`，从共享 MySQL 的 `work_order` 与 `audit_log` 增量读取工单变化，不依赖 Redis、RocketMQ 或进程内广播。
 - 已新增 `infra/sql/15-workbench-ticket-sse-indexes.sql`，为工单更新时间和审计发生时间增量扫描提供可重复执行的索引迁移。
@@ -404,14 +418,16 @@
 
 1. Phase 9：接入 Prometheus/Grafana 基础指标和告警；OpenTelemetry 链路追踪后置。
 2. Phase 8：拿到真实账号中心或统一登录契约后完成生产鉴权接入。
-3. Phase 7：保持用户端与坐席端 SSE 默认关闭并观察真实使用；只有需要双向人工聊天、在线状态、输入中或已读回执时再设计 WebSocket 协议。
-4. Phase 5：拿到真实知识内容源后，再做批量导入、文档切分、RAG 评测和内容审核。
-5. Phase 6：保持现有 MySQL outbox 方案运行；只有达到 MQ 评估触发条件后才重新讨论 RocketMQ。
+3. Phase 5：拿到真实知识内容源后，再做批量导入、文档切分、RAG 评测和内容审核。
+4. Phase 6：保持现有 MySQL outbox 方案运行；只有达到 MQ 评估触发条件后才重新讨论 RocketMQ。
+5. Phase 7：保持用户端与坐席端 SSE 默认关闭并观察真实使用；只有需要双向人工聊天、在线状态、输入中或已读回执时再设计 WebSocket 协议。
+
+当前计划内、不依赖外部输入的高优先级开发项已经完成。前三项分别依赖监控环境、账号中心契约和真实知识内容源；输入未就绪前不编造配置、接口或业务数据继续开发。
 
 下一阶段外部输入：
 
-- Prometheus：部署地址、抓取网络、是否启用认证，以及允许暴露的应用指标端点。
-- Grafana：部署地址、数据源接入方式和告警通知渠道；真实密钥不写入仓库。
+- Prometheus：已安装版本、部署地址、抓取网络、是否启用认证，以及允许暴露的应用指标端点。
+- Grafana：已安装版本、部署地址、数据源接入方式和告警通知渠道；真实密钥不写入仓库。
 - 账号中心：JWT issuer、audience、签名校验方式或 JWKS 地址、角色/权限 claim、登录与刷新入口。
 - 真实知识源：内容格式、更新频率、审核责任人和可用于离线评测的问题集。
 
