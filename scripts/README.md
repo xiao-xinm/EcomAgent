@@ -116,9 +116,19 @@ Copy-Item .\infra\env\backend-production.env.example .\infra\env\backend-product
 .\scripts\check-runtime-readiness.ps1
 ```
 
+部署或切换步骤可显式断言期望状态，不匹配时返回退出码 `1`：
+
+```powershell
+.\scripts\check-runtime-readiness.ps1 `
+  -ExpectedKnowledgeState HYBRID_READY `
+  -ExpectedNotificationState CUTOVER_READY
+```
+
+可断言的通知状态为 `DIRECT`、`CUTOVER_READY`、`ASYNC_BACKLOG`、`ASYNC_ACTIVE`；Knowledge 状态为 `KEYWORD_READY`、`HYBRID_READY`。
+
 脚本不会修改配置、索引、通知事件或数据库。它也支持 `-SnapshotPath` 读取脱敏 JSON 快照，便于离线复盘和脚本回归。
 
-运行 6 种状态组合的离线测试：
+运行 7 种状态组合和期望状态不匹配的离线测试：
 
 ```powershell
 .\scripts\test-runtime-readiness.ps1

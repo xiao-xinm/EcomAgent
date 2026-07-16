@@ -267,6 +267,8 @@
 - 2026-07-16 已完成默认同步模式真实 API 与页面验收，记录见 `docs/e2e-validation-2026-07-16-notification-cutover-readiness.md`。
 - 通知进程级烟测已增加只读 `Preflight` 模式；完整、准备恢复和验证恢复流程都会在造测试数据前校验 outbox、消息模式、retry worker 与 `USER_SESSION` 通道。
 - 2026-07-16 已使用真实 MySQL 完成预检、异步投递和幂等重放验收，记录见 `docs/e2e-validation-2026-07-16-notification-smoke-preflight.md`。
+- 运行时就绪脚本已支持期望状态断言，可将 `CUTOVER_READY`、`ASYNC_ACTIVE` 和回滚状态作为部署步骤的硬门槛。
+- 2026-07-16 已完成真实灰度切换与回滚验收：直写灰度、Notification 异步交付、唯一消息、重复事件幂等和先恢复直写的回滚顺序全部通过；记录见 `docs/e2e-validation-2026-07-16-notification-cutover-rollback.md`。
 
 中间件要求：
 

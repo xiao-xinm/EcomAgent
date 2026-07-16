@@ -14,7 +14,7 @@
 .\scripts\test-runtime-readiness.ps1
 ```
 
-结果：6/6 通过。
+结果：7/7 通过。
 
 - `KEYWORD_READY + DIRECT`：通过。
 - `HYBRID_READY + ASYNC_ACTIVE`：通过。
@@ -22,6 +22,7 @@
 - `ASYNC_CONFIG_INVALID`：按预期返回退出码 `1`。
 - `RETRY_EXHAUSTED`：按预期返回退出码 `1`。
 - `ASYNC_BACKLOG`：通过并提示继续观察积压。
+- 期望状态与实际状态不一致：按预期返回 `STATE_MISMATCH` 和退出码 `1`。
 
 ## 真实服务验收
 

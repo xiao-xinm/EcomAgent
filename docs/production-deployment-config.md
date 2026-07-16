@@ -77,9 +77,11 @@ SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 1. 保持 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=true`。
 2. 开启 Workbench outbox、Notification retry 和 `USER_SESSION` 通道。
 3. 观察 Workbench Outbox 与 Notification Delivery 摘要，确认 `due`、`exhaustedFailed` 和 `oldestDueAt` 无持续增长。
-4. 将 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false` 并重启 Workbench。
-5. 执行 `scripts/smoke-notification-user-session.ps1 -Mode Preflight`，确认运行进程已加载完整异步配置。
-6. 执行 `scripts/smoke-notification-user-session.ps1` 验证真实投递和幂等重放。
+4. 执行 `scripts/check-runtime-readiness.ps1 -ExpectedNotificationState CUTOVER_READY`，确认灰度链路完整且无积压。
+5. 将 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false` 并重启 Workbench。
+6. 执行 `scripts/check-runtime-readiness.ps1 -ExpectedNotificationState ASYNC_ACTIVE`，确认用户消息所有权已切换到 Notification。
+7. 执行 `scripts/smoke-notification-user-session.ps1 -Mode Preflight`，确认运行进程已加载完整异步配置。
+8. 执行 `scripts/smoke-notification-user-session.ps1` 验证真实投递和幂等重放。
 
 直写与 outbox 同时开启属于迁移观察状态，校验器会给出警告但不会阻止部署。
 
@@ -88,9 +90,10 @@ SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 异步链路异常时按以下顺序回滚：
 
 1. 先恢复 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=true` 并重启 Workbench。
-2. 验证新工单消息已重新直接写入 `cs_message`。
-3. 再关闭 Workbench outbox、Notification retry 和 `USER_SESSION` 通道。
-4. 保留 outbox 与 notification_event 数据用于排障，不直接删除积压记录。
+2. 执行 `scripts/check-runtime-readiness.ps1 -ExpectedNotificationState CUTOVER_READY`，确认直写已恢复且异步链路仍可观察。
+3. 验证新工单消息已重新直接写入 `cs_message`。
+4. 再关闭 Workbench outbox、Notification retry 和 `USER_SESSION` 通道。
+5. 保留 outbox 与 notification_event 数据用于排障，不直接删除积压记录。
 
 先恢复直写可以避免用户消息交付空窗。回滚后继续通过两个摘要接口确认旧积压状态。
 

@@ -52,10 +52,22 @@ function New-Snapshot(
     }
 }
 
-function Invoke-Checker([string]$Name, [hashtable]$Snapshot) {
+function Invoke-Checker(
+    [string]$Name,
+    [hashtable]$Snapshot,
+    [string]$ExpectedKnowledgeState,
+    [string]$ExpectedNotificationState
+) {
     $snapshotPath = Join-Path $tempRoot "$Name.json"
     $Snapshot | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $snapshotPath -Encoding UTF8
-    $output = & $shell -NoProfile -ExecutionPolicy Bypass -File $checker -SnapshotPath $snapshotPath 2>&1 | Out-String
+    $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $checker, "-SnapshotPath", $snapshotPath)
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedKnowledgeState)) {
+        $arguments += @("-ExpectedKnowledgeState", $ExpectedKnowledgeState)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedNotificationState)) {
+        $arguments += @("-ExpectedNotificationState", $ExpectedNotificationState)
+    }
+    $output = & $shell @arguments 2>&1 | Out-String
     return [pscustomobject]@{
         ExitCode = $LASTEXITCODE
         Output = $output
@@ -86,38 +98,44 @@ try {
     Assert-Result `
         "keyword-direct" `
         0 `
-        (Invoke-Checker "keyword-direct" (New-Snapshot)) `
+        (Invoke-Checker "keyword-direct" (New-Snapshot) "KEYWORD_READY" "DIRECT") `
         @("KEYWORD_READY", "DIRECT")
 
     Assert-Result `
         "hybrid-async" `
         0 `
-        (Invoke-Checker "hybrid-async" (New-Snapshot -HybridEnabled $true -DeliveryMode "NOTIFICATION" -AsyncConfigurationReady $true)) `
+        (Invoke-Checker "hybrid-async" (New-Snapshot -HybridEnabled $true -DeliveryMode "NOTIFICATION" -AsyncConfigurationReady $true) "HYBRID_READY" "ASYNC_ACTIVE") `
         @("HYBRID_READY", "ASYNC_ACTIVE")
 
     Assert-Result `
         "hybrid-inconsistent" `
         1 `
-        (Invoke-Checker "hybrid-inconsistent" (New-Snapshot -HybridEnabled $true -KnowledgeConsistent $false)) `
+        (Invoke-Checker "hybrid-inconsistent" (New-Snapshot -HybridEnabled $true -KnowledgeConsistent $false) "" "") `
         @("HYBRID_INCONSISTENT")
 
     Assert-Result `
         "async-config-invalid" `
         1 `
-        (Invoke-Checker "async-config-invalid" (New-Snapshot -DeliveryMode "NOTIFICATION")) `
+        (Invoke-Checker "async-config-invalid" (New-Snapshot -DeliveryMode "NOTIFICATION") "" "") `
         @("ASYNC_CONFIG_INVALID")
 
     Assert-Result `
         "retry-exhausted" `
         1 `
-        (Invoke-Checker "retry-exhausted" (New-Snapshot -AsyncConfigurationReady $true -Exhausted 1)) `
+        (Invoke-Checker "retry-exhausted" (New-Snapshot -AsyncConfigurationReady $true -Exhausted 1) "" "") `
         @("RETRY_EXHAUSTED")
 
     Assert-Result `
         "recoverable-backlog" `
         0 `
-        (Invoke-Checker "recoverable-backlog" (New-Snapshot -DeliveryMode "NOTIFICATION" -AsyncConfigurationReady $true -Outstanding 2)) `
+        (Invoke-Checker "recoverable-backlog" (New-Snapshot -DeliveryMode "NOTIFICATION" -AsyncConfigurationReady $true -Outstanding 2) "" "ASYNC_BACKLOG") `
         @("ASYNC_BACKLOG", "runtime dependencies are ready")
+
+    Assert-Result `
+        "expected-state-mismatch" `
+        1 `
+        (Invoke-Checker "expected-state-mismatch" (New-Snapshot -AsyncConfigurationReady $true) "KEYWORD_READY" "ASYNC_ACTIVE") `
+        @("STATE_MISMATCH", "expected=ASYNC_ACTIVE, actual=CUTOVER_READY")
 
     Write-Host "[test] runtime readiness checks passed=$passed"
 } finally {

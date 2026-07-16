@@ -5,7 +5,11 @@ param(
     [string]$NotificationBaseUrl = "http://localhost:8085",
     [string]$OperatorId = "agent_001",
     [string]$Roles = "AGENT",
-    [string]$SnapshotPath
+    [string]$SnapshotPath,
+    [ValidateSet("KEYWORD_READY", "HYBRID_READY")]
+    [string]$ExpectedKnowledgeState,
+    [ValidateSet("DIRECT", "CUTOVER_READY", "ASYNC_BACKLOG", "ASYNC_ACTIVE")]
+    [string]$ExpectedNotificationState
 )
 
 $ErrorActionPreference = "Stop"
@@ -147,6 +151,20 @@ if ($null -ne $knowledgeSummary) {
 if ($null -ne $outboxSummary -and $null -ne $deliverySummary) {
     Test-NotificationReadiness $outboxSummary $deliverySummary
 }
+
+function Test-ExpectedState([string]$Name, [string]$ExpectedState) {
+    if ([string]::IsNullOrWhiteSpace($ExpectedState)) {
+        return
+    }
+    $actual = $results | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+    if ($null -eq $actual -or $actual.State -ne $ExpectedState) {
+        $actualState = if ($null -eq $actual) { "MISSING" } else { $actual.State }
+        Add-ReadinessResult "$Name-expectation" $false "STATE_MISMATCH" "expected=$ExpectedState, actual=$actualState"
+    }
+}
+
+Test-ExpectedState "knowledge" $ExpectedKnowledgeState
+Test-ExpectedState "notification" $ExpectedNotificationState
 
 foreach ($result in $results) {
     $prefix = if ($result.Passed) { "[ok]" } else { "[fail]" }
