@@ -66,8 +66,9 @@ SMARTCS_NOTIFICATION_USER_SESSION_CHANNEL_ENABLED=false
 1. 保持 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=true`。
 2. 开启 Workbench outbox、Notification retry 和 `USER_SESSION` 通道。
 3. 观察 Workbench Outbox 与 Notification Delivery 摘要，确认 `due`、`exhaustedFailed` 和 `oldestDueAt` 无持续增长。
-4. 执行 `scripts/smoke-notification-user-session.ps1`。
-5. 最后将 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false`，重启 Workbench 并重复验收。
+4. 将 `SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false` 并重启 Workbench。
+5. 执行 `scripts/smoke-notification-user-session.ps1 -Mode Preflight`，确认运行进程已加载完整异步配置。
+6. 执行 `scripts/smoke-notification-user-session.ps1` 验证真实投递和幂等重放。
 
 直写与 outbox 同时开启属于迁移观察状态，校验器会给出警告但不会阻止部署。
 

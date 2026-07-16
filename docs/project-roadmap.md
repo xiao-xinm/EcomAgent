@@ -262,6 +262,8 @@
 - Workbench Outbox 摘要已增加 Notification 开关和当前用户消息交付模式；Notification Delivery 摘要已增加 `USER_SESSION` 通道开关。
 - 坐席工作台已基于两端配置和积压状态展示同步直写、切换就绪、积压阻断、异步运行和配置异常，不会自动修改运行开关。
 - 2026-07-16 已完成默认同步模式真实 API 与页面验收，记录见 `docs/e2e-validation-2026-07-16-notification-cutover-readiness.md`。
+- 通知进程级烟测已增加只读 `Preflight` 模式；完整、准备恢复和验证恢复流程都会在造测试数据前校验 outbox、消息模式、retry worker 与 `USER_SESSION` 通道。
+- 2026-07-16 已使用真实 MySQL 完成预检、异步投递和幂等重放验收，记录见 `docs/e2e-validation-2026-07-16-notification-smoke-preflight.md`。
 
 中间件要求：
 

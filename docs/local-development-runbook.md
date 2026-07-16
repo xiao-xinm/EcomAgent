@@ -140,8 +140,11 @@ SMARTCS_NOTIFICATION_USER_MESSAGE_DIRECT_WRITE_ENABLED=false
 完整配置启动后，可执行用户会话解耦烟测：
 
 ```powershell
+.\scripts\smoke-notification-user-session.ps1 -Mode Preflight
 .\scripts\smoke-notification-user-session.ps1
 ```
+
+`Preflight` 会在创建测试工单前确认 Workbench outbox、`NOTIFICATION` 模式、Notification retry worker 和 `USER_SESSION` 通道全部开启。任一条件不满足时先修正环境变量并重启对应服务。
 
 验证 Notification 中断恢复时，先停止 Notification 并执行 `-Mode PrepareRecovery`，再启动 Notification 并执行 `-Mode VerifyRecovery`。脚本会验证 outbox 恢复、最终投递和重复事件幂等，并在成功后清理测试数据。
 

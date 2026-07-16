@@ -131,7 +131,16 @@ cd D:\NewProject\EcomAgent
 两个服务均已启动时执行完整烟测：
 
 ```powershell
+.\scripts\smoke-notification-user-session.ps1 -Mode Preflight
 .\scripts\smoke-notification-user-session.ps1
+```
+
+`Preflight` 只读检查 Workbench outbox、`NOTIFICATION` 消息模式、Notification retry worker 和 `USER_SESSION` 通道，不创建测试数据。完整烟测和恢复验证也会先执行同样的配置检查。
+
+预检判断的纯脚本回归测试：
+
+```powershell
+.\scripts\test-notification-smoke-preflight.ps1
 ```
 
 验证服务中断与恢复时，先停止 Notification，保持 Workbench 运行：

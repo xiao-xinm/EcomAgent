@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Full", "PrepareRecovery", "VerifyRecovery", "Cleanup")]
+    [ValidateSet("Full", "Preflight", "PrepareRecovery", "VerifyRecovery", "Cleanup")]
     [string]$Mode = "Full",
     [string]$WorkbenchBaseUrl = "http://localhost:8083",
     [string]$NotificationBaseUrl = "http://localhost:8085",
@@ -13,6 +13,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+. (Join-Path $PSScriptRoot "lib/notification-smoke-preflight.ps1")
 
 function Write-Step([string]$Message) {
     Write-Host "[notification-smoke] $Message"
@@ -71,6 +73,38 @@ function Test-ServiceHealth([string]$BaseUrl) {
     } catch {
         $false
     }
+}
+
+function Get-WorkbenchOutboxSummary {
+    $response = Invoke-RestMethod `
+        -Method Get `
+        -Uri "$WorkbenchBaseUrl/api/workbench/notifications/outbox/summary" `
+        -Headers @{
+            "X-SmartCS-Operator-Id" = "agent_notification_e2e"
+            "X-SmartCS-Roles" = "AGENT"
+        } `
+        -TimeoutSec 5
+    Assert-Equal $response.code "0000" "workbench outbox summary response code"
+    $response.data
+}
+
+function Get-NotificationDeliverySummary {
+    $response = Invoke-RestMethod `
+        -Method Get `
+        -Uri "$NotificationBaseUrl/api/notifications/events/delivery-summary" `
+        -TimeoutSec 5
+    Assert-Equal $response.code "0000" "notification delivery summary response code"
+    $response.data
+}
+
+function Assert-WorkbenchAsyncConfiguration {
+    Assert-NotificationSmokeWorkbenchSummary (Get-WorkbenchOutboxSummary)
+    Write-Step "Workbench outbox and NOTIFICATION delivery mode are enabled"
+}
+
+function Assert-NotificationAsyncConfiguration {
+    Assert-NotificationSmokeDeliverySummary (Get-NotificationDeliverySummary)
+    Write-Step "Notification retry worker and USER_SESSION channel are enabled"
 }
 
 function Invoke-WorkbenchPost([string]$Uri, [hashtable]$Body) {
@@ -234,9 +268,19 @@ if ($Mode -eq "Cleanup") {
     exit 0
 }
 
+if ($Mode -eq "Preflight") {
+    Assert-True (Test-ServiceHealth $WorkbenchBaseUrl) "Workbench must be running"
+    Assert-True (Test-ServiceHealth $NotificationBaseUrl) "Notification must be running"
+    Assert-WorkbenchAsyncConfiguration
+    Assert-NotificationAsyncConfiguration
+    Write-Step "async notification preflight passed"
+    exit 0
+}
+
 if ($Mode -eq "PrepareRecovery") {
     Assert-True (Test-ServiceHealth $WorkbenchBaseUrl) "Workbench must be running"
     Assert-True (-not (Test-ServiceHealth $NotificationBaseUrl)) "Notification must be stopped for recovery preparation"
+    Assert-WorkbenchAsyncConfiguration
     $state = New-SmokeState
     try {
         New-Fixture $state
@@ -256,6 +300,8 @@ if ($Mode -eq "PrepareRecovery") {
 if ($Mode -eq "VerifyRecovery") {
     Assert-True (Test-ServiceHealth $WorkbenchBaseUrl) "Workbench must be running"
     Assert-True (Test-ServiceHealth $NotificationBaseUrl) "Notification must be running"
+    Assert-WorkbenchAsyncConfiguration
+    Assert-NotificationAsyncConfiguration
     $state = Load-State
     try {
         # 仅加速本次烟测事件，避免等待默认的一分钟首次退避。
@@ -273,6 +319,8 @@ if ($Mode -eq "VerifyRecovery") {
 
 Assert-True (Test-ServiceHealth $WorkbenchBaseUrl) "Workbench must be running"
 Assert-True (Test-ServiceHealth $NotificationBaseUrl) "Notification must be running"
+Assert-WorkbenchAsyncConfiguration
+Assert-NotificationAsyncConfiguration
 $state = New-SmokeState
 try {
     New-Fixture $state
