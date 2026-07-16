@@ -26,7 +26,7 @@
 
 ## 3. 当前基线
 
-截至 2026-07-03，项目已完成核心最小闭环 MVP：
+截至 2026-07-16，项目已完成核心最小闭环 MVP，并补齐知识索引运营、通知可靠交付和部署前运行时检查：
 
 | 模块 | 当前状态 |
 |------|----------|
@@ -34,9 +34,9 @@
 | `smartcs-gateway` | 已具备用户聊天入口、会话查询、CORS 和日志基础 |
 | `smartcs-agent-core` | 已具备意图识别、风险路由、确认链路、人工工单创建 |
 | `smartcs-skill-engine` | 已具备订单查询、物流查询、修改地址、取消订单等最小技能 |
-| `smartcs-workbench` | 已具备工单列表、详情、领取、审批、人工接管、消息回写 |
-| `smartcs-knowledge` | 已具备 FAQ 关键词匹配最小链路 |
-| `smartcs-notification` | 已具备通知事件最小接收和记录链路 |
+| `smartcs-workbench` | 已具备工单处理、人工接管、通知 outbox、FAQ 管理和运营摘要 |
+| `smartcs-knowledge` | 已具备 FAQ 管理、ES + pgvector 混合检索、索引状态与非破坏性修复 |
+| `smartcs-notification` | 已具备通知落库、租约重试、`USER_SESSION` 幂等投递和运行摘要 |
 | `frontend/client-h5` | 已具备聊天、短轮询、快捷动作、地址确认表单、状态展示和 Token Provider 骨架 |
 | `frontend/app-h5` | 已具备复用用户端聊天能力的 APP 内嵌入口和 Token Provider 骨架 |
 | `frontend/workstation` | 已具备坐席工作台最小闭环和 Token Provider 骨架 |
@@ -171,7 +171,7 @@
 
 ### Phase 5. 知识库能力增强
 
-状态：混合检索基础闭环已完成，运营增强待继续。
+状态：当前知识检索与索引运营闭环已完成；批量导入、文档切分和完整 RAG 后续按真实内容源再进入。
 
 目标：
 
@@ -217,7 +217,7 @@
 
 ### Phase 6. 通知服务增强
 
-状态：通知可靠性基础闭环已完成，默认异步切换和生产监控待继续。
+状态：通知可靠性、异步灰度和回滚验收已完成；生产默认切换等待外部监控平台就绪后决策。
 
 目标：
 
@@ -353,7 +353,7 @@
 
 ### Phase 9. 观测、运维与部署
 
-状态：进行中。
+状态：部署配置与运行时就绪检查已完成；Prometheus/Grafana 和链路追踪待外部环境准备。
 
 目标：
 
@@ -385,7 +385,7 @@
 - 已新增 `infra/env/backend-production.env.example` 和 `scripts/check-deployment-config.ps1`，在部署前校验数据库、CORS、严格 JWT、服务拓扑、混合检索依赖和通知异步开关组合。
 - 已新增无第三方依赖的部署配置脚本回归测试，并在 `docs/production-deployment-config.md` 固化同步首发、异步灰度和回滚顺序。
 - 已新增 `scripts/check-runtime-readiness.ps1`，只读聚合 Knowledge 索引状态、Workbench Outbox 与 Notification Delivery 摘要，识别混合索引不一致、异步配置断链、重试耗尽和可恢复积压。
-- 已新增 6 种运行状态的离线快照回归测试；不依赖 Pester 或新增中间件。
+- 已新增 7 种运行状态与期望状态断言的离线快照回归测试；不依赖 Pester 或新增中间件。
 - 2026-07-16 已使用真实 Workbench、Knowledge、Notification 进程验证 `HYBRID_READY + DIRECT`，三端知识文档数均为 7；记录见 `docs/e2e-validation-2026-07-16-runtime-readiness.md`。
 
 中间件要求：
@@ -397,11 +397,18 @@
 
 当前推荐优先级：
 
-1. Phase 9：观测、运维与部署，继续补齐依赖状态、积压观测和部署配置。
-2. Phase 6：通知服务增强，完成异步用户消息模式的灰度切换与回滚验收；只有达到评估触发条件后才考虑 MQ。
-3. Phase 8：登录鉴权与权限，等待真实账号中心或统一登录契约后完成生产接入。
-4. Phase 5：知识库运营增强，补齐索引同步失败修复、增量重建和运营验收集。
-5. Phase 7：实时消息升级，后续按需从用户端 SSE 扩展到坐席端实时提醒。
+1. Phase 9：接入 Prometheus/Grafana 基础指标和告警；OpenTelemetry 链路追踪后置。
+2. Phase 8：拿到真实账号中心或统一登录契约后完成生产鉴权接入。
+3. Phase 7：按真实实时性需求，从用户端 SSE 扩展到坐席端提醒；多实例前继续保留短轮询兜底。
+4. Phase 5：拿到真实知识内容源后，再做批量导入、文档切分、RAG 评测和内容审核。
+5. Phase 6：保持现有 MySQL outbox 方案运行；只有达到 MQ 评估触发条件后才重新讨论 RocketMQ。
+
+下一阶段外部输入：
+
+- Prometheus：部署地址、抓取网络、是否启用认证，以及允许暴露的应用指标端点。
+- Grafana：部署地址、数据源接入方式和告警通知渠道；真实密钥不写入仓库。
+- 账号中心：JWT issuer、audience、签名校验方式或 JWKS 地址、角色/权限 claim、登录与刷新入口。
+- 真实知识源：内容格式、更新频率、审核责任人和可用于离线评测的问题集。
 
 ## 6. 变更准入规则
 
