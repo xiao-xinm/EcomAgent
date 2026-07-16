@@ -195,7 +195,7 @@ Content-Type: application/json; charset=utf-8
 
 响应结构与全量重建相同。`documentCount` 表示本次重放的 FAQ 数，`operations` 记录每个检索写入器的结果。`failureCount>0` 时其他写入器和文档仍会继续处理，可在依赖恢复后再次调用；接口具备幂等性。
 
-坐席工作台 FAQ 管理页提供“修复索引”入口。该操作会调用 DashScope 重新生成语义向量，执行前应确认 ES、pgvector 和 DashScope 可用。
+坐席工作台 FAQ 管理页提供两种入口：工具栏“修复索引”重放全部 FAQ，表格行内“修复”只重放当前 FAQ。两种操作都会调用 DashScope 重新生成语义向量，执行前应确认 ES、pgvector 和 DashScope 可用；日常单条失败优先使用行内修复，避免无必要地重算全部向量。
 
 ### 重建混合检索索引
 

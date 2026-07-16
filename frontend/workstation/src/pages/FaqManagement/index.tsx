@@ -60,7 +60,7 @@ const FaqManagement: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<FaqItem | null>(null);
   const [saving, setSaving] = useState(false);
-  const [repairing, setRepairing] = useState(false);
+  const [repairingTarget, setRepairingTarget] = useState<string | null>(null);
 
   const openCreate = () => {
     setEditingRecord(null);
@@ -116,23 +116,26 @@ const FaqManagement: React.FC = () => {
     }
   };
 
-  const handleRepairIndexes = async () => {
-    setRepairing(true);
+  const handleRepairIndexes = async (faqIds?: string[]) => {
+    const target = faqIds?.[0] || "ALL";
+    setRepairingTarget(target);
     try {
-      const result = await repairFaqIndexes();
+      const result = await repairFaqIndexes(faqIds ? { faqIds } : {});
       if (!result.enabled) {
         message.info("当前未启用混合检索索引，无需修复");
       } else if (result.failureCount > 0) {
         message.warning(
           `索引修复部分失败：成功 ${result.successCount} 项，失败 ${result.failureCount} 项`,
         );
+      } else if (faqIds?.length) {
+        message.success(`FAQ ${faqIds[0]} 索引修复完成`);
       } else {
         message.success(`索引修复完成：${result.documentCount} 条 FAQ`);
       }
     } catch (error) {
       message.error((error as Error).message || "索引修复失败");
     } finally {
-      setRepairing(false);
+      setRepairingTarget(null);
     }
   };
 
@@ -213,7 +216,7 @@ const FaqManagement: React.FC = () => {
     {
       title: "操作",
       valueType: "option",
-      width: 180,
+      width: 250,
       fixed: "right",
       render: (_, record) => (
         <Space size="small">
@@ -225,6 +228,24 @@ const FaqManagement: React.FC = () => {
           >
             编辑
           </Button>
+          <Popconfirm
+            title="修复当前 FAQ 索引"
+            description="仅将当前 FAQ 重新同步到 ES 和 pgvector，不会清空索引。"
+            okText="修复当前项"
+            cancelText="取消"
+            onConfirm={() => handleRepairIndexes([record.faqId])}
+          >
+            <Button
+              type="link"
+              size="small"
+              icon={<SyncOutlined />}
+              aria-label={`修复 ${record.faqId} 索引`}
+              loading={repairingTarget === record.faqId}
+              disabled={repairingTarget !== null && repairingTarget !== record.faqId}
+            >
+              修复
+            </Button>
+          </Popconfirm>
           {record.status === "ACTIVE" ? (
             <Popconfirm
               title="停用 FAQ"
@@ -287,9 +308,14 @@ const FaqManagement: React.FC = () => {
               description="将 MySQL 中的 FAQ 重新同步到 ES 和 pgvector，不会清空现有索引；过程会调用向量模型。"
               okText="开始修复"
               cancelText="取消"
-              onConfirm={handleRepairIndexes}
+              onConfirm={() => handleRepairIndexes()}
             >
-              <Button icon={<SyncOutlined />} loading={repairing}>
+              <Button
+                icon={<SyncOutlined />}
+                aria-label="修复全部 FAQ 索引"
+                loading={repairingTarget === "ALL"}
+                disabled={repairingTarget !== null && repairingTarget !== "ALL"}
+              >
                 修复索引
               </Button>
             </Popconfirm>,

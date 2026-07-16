@@ -206,7 +206,7 @@
 - 已新增 `GET /api/knowledge/faq/index/status`，只读检查 MySQL、Elasticsearch、pgvector 的可用性、ACTIVE 文档数量和一致性；真实环境验证三端均为 7 条且状态健康。
 - 混合检索冒烟脚本已把索引健康与一致性作为强制验收门槛。
 - 已新增 `POST /api/knowledge/faq/index/repair` 非破坏性修复接口，支持重放全部 FAQ 或最多 100 个指定 FAQ，不清空现有 ES/pgvector 索引，单个写入器失败不会阻断其余修复。
-- 坐席工作台 FAQ 管理页已增加索引修复入口，并完成请求契约、确认交互和结果反馈的页面 E2E 覆盖。
+- 坐席工作台 FAQ 管理页已增加全量和单条索引修复入口，并完成两种请求契约、确认交互和结果反馈的页面 E2E 覆盖。
 - 2026-07-16 已完成真实混合环境修复验收：7 条 FAQ 共 14 次索引写入零失败，指定 FAQ 重放保持幂等，三端文档数均为 7；记录见 `docs/e2e-validation-2026-07-16-knowledge-index-repair.md`。
 
 中间件要求：

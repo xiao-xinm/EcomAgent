@@ -15,6 +15,8 @@
 - `npm run build --workspace @smartcs/workstation`：通过。
 - `npm run test:e2e:workstation`：通过，7 条页面场景。
 
+FAQ 管理页面场景会先执行单条修复并断言 `{ "faqIds": ["faq_e2e_refund"] }`，再执行全量修复并断言空对象请求，确认两个入口不会串用上下文。
+
 ## 真实环境结果
 
 环境沿用项目既有配置：MySQL、PostgreSQL 16 + pgvector 0.8.2、Elasticsearch 8.15.0 + `analysis-smartcn`、DashScope `text-embedding-v4`。

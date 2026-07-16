@@ -123,11 +123,10 @@ test('workstation renders notification events', async ({ page }) => {
 })
 
 test('workstation can repair FAQ indexes without rebuilding them', async ({ page }) => {
-  let repairCalled = false
+  const repairBodies: unknown[] = []
 
   await page.route('**/api/knowledge/faq/index/repair', async (route) => {
-    repairCalled = true
-    expect(route.request().postDataJSON()).toEqual({})
+    repairBodies.push(route.request().postDataJSON())
     await route.fulfill({
       status: 200,
       contentType: 'application/json; charset=utf-8',
@@ -172,10 +171,18 @@ test('workstation can repair FAQ indexes without rebuilding them', async ({ page
   await page.goto('/knowledge/faq')
 
   await expect(page.getByText('退款多久到账')).toBeVisible()
-  await page.getByRole('button', { name: '修复索引' }).click()
+  await page.getByRole('button', { name: '修复 faq_e2e_refund 索引' }).click()
+  await expect(page.getByText('修复当前 FAQ 索引')).toBeVisible()
+  await page.getByRole('button', { name: '修复当前项' }).click()
+  await expect.poll(() => repairBodies.length).toBe(1)
+  expect(repairBodies[0]).toEqual({ faqIds: ['faq_e2e_refund'] })
+  await expect(page.getByText('FAQ faq_e2e_refund 索引修复完成')).toBeVisible()
+
+  await page.getByRole('button', { name: '修复全部 FAQ 索引' }).click()
   await expect(page.getByText('修复知识索引')).toBeVisible()
   await page.getByRole('button', { name: '开始修复' }).click()
-  await expect.poll(() => repairCalled).toBe(true)
+  await expect.poll(() => repairBodies.length).toBe(2)
+  expect(repairBodies[1]).toEqual({})
   await expect(page.getByText('索引修复完成：1 条 FAQ')).toBeVisible()
 })
 

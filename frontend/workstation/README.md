@@ -14,7 +14,7 @@
 
 FAQ 管理页通过 Knowledge 服务访问 `docs/knowledge-api.md` 中的 FAQ 管理接口。
 
-“修复索引”会把 MySQL FAQ 重新同步到 Elasticsearch 和 pgvector，不会清空索引；混合检索未启用时页面会提示无需修复。
+工具栏“修复索引”会把全部 MySQL FAQ 重新同步到 Elasticsearch 和 pgvector；表格行内“修复”只处理当前 FAQ。两者都不会清空索引；混合检索未启用时页面会提示无需修复。
 
 常用环境变量：
 
