@@ -83,6 +83,25 @@ cd D:\NewProject\EcomAgent
 .\scripts\check-local-stack.ps1 -SkipAppH5
 ```
 
+## check-deployment-config.ps1
+
+`check-deployment-config.ps1` 在启动生产进程前离线校验后端环境变量文件。它不会连接数据库或外部服务，也不会输出密钥值。
+
+先基于模板生成未提交的实际配置，再执行：
+
+```powershell
+Copy-Item .\infra\env\backend-production.env.example .\infra\env\backend-production.env
+.\scripts\check-deployment-config.ps1 -Path .\infra\env\backend-production.env
+```
+
+校验覆盖数据库账号、CORS、严格 JWT、内部服务地址、Knowledge 混合检索依赖，以及 Workbench outbox 与 Notification 投递开关组合。模板中的密钥占位符必须替换后才能通过。
+
+脚本自身回归测试：
+
+```powershell
+.\scripts\test-deployment-config.ps1
+```
+
 ## smoke-knowledge-hybrid.ps1
 
 `smoke-knowledge-hybrid.ps1` 用于 Phase 5 混合检索验收。执行前必须：

@@ -38,4 +38,4 @@ docker compose down -v
 docker compose up -d
 ```
 
-当前阶段不启用 Redis、RocketMQ、Milvus、Elasticsearch。后续如果业务进入实时广播、异步通知或 RAG 检索，再单独评估并扩展 Compose。
+项目内 Compose 当前不启用 Redis、RocketMQ、Elasticsearch 或 pgvector。Phase 5 混合检索使用外部 PostgreSQL + pgvector 与 Elasticsearch；连接配置见 `docs/production-deployment-config.md`，不要把真实密码写入本目录的示例文件。

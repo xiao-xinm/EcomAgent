@@ -372,6 +372,8 @@
 - 坐席工作台已补齐 FAQ 表单单元测试和当前坐席身份 E2E mock；工单、审批、人工接管、通知事件等 6 条 Playwright 场景可重复运行。
 - 坐席工作台已采用路由级懒加载，页面模块按访问路径加载，降低首次进入工作台的入口包体积。
 - 已将 `react-router-dom` 升级至 `6.30.4`、将锁定的 `form-data` 升级至 `4.0.6`，消除对应生产依赖审计告警；当前最新稳定版 `@ant-design/pro-components` 仍通过上游 `path-to-regexp` 保留审计风险，待上游发布兼容修复或单独评估替代方案。
+- 已新增 `infra/env/backend-production.env.example` 和 `scripts/check-deployment-config.ps1`，在部署前校验数据库、CORS、严格 JWT、服务拓扑、混合检索依赖和通知异步开关组合。
+- 已新增无第三方依赖的部署配置脚本回归测试，并在 `docs/production-deployment-config.md` 固化同步首发、异步灰度和回滚顺序。
 
 中间件要求：
 
