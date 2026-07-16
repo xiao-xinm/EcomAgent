@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS `work_order` (
     KEY `idx_session` (`session_id`),
     KEY `idx_sla` (`sla_deadline`),
     KEY `idx_trace` (`trace_id`),
+    KEY `idx_updated_ticket` (`updated_at`, `ticket_id`),
     CONSTRAINT `fk_work_order_session`
         FOREIGN KEY (`session_id`) REFERENCES `cs_session` (`session_id`),
     CONSTRAINT `chk_work_order_risk_level`
@@ -211,5 +212,6 @@ CREATE TABLE IF NOT EXISTS `audit_log` (
     KEY `idx_session_occurred` (`session_id`, `occurred_at`),
     KEY `idx_ticket_occurred` (`ticket_id`, `occurred_at`),
     KEY `idx_user_occurred` (`user_id`, `occurred_at`),
-    KEY `idx_event_type_occurred` (`event_type`, `occurred_at`)
+    KEY `idx_event_type_occurred` (`event_type`, `occurred_at`),
+    KEY `idx_occurred_event` (`occurred_at`, `event_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='审计日志表';

@@ -28,6 +28,14 @@ spring:
       enabled: false
 
 smartcs:
+  realtime:
+    ticket-events:
+      # 坐席工单 SSE 默认关闭；开启后从共享 MySQL 增量扫描，不依赖 Redis 或 MQ。
+      enabled: ${SMARTCS_WORKBENCH_TICKET_SSE_ENABLED:false}
+      poll-interval-ms: ${SMARTCS_WORKBENCH_TICKET_SSE_POLL_INTERVAL_MS:2000}
+      batch-size: ${SMARTCS_WORKBENCH_TICKET_SSE_BATCH_SIZE:100}
+      heartbeat-interval-ms: ${SMARTCS_WORKBENCH_TICKET_SSE_HEARTBEAT_INTERVAL_MS:15000}
+      emitter-timeout-ms: ${SMARTCS_WORKBENCH_TICKET_SSE_EMITTER_TIMEOUT_MS:1800000}
   auth:
     strict-enabled: ${SMARTCS_AUTH_STRICT_ENABLED:false}
     jwt:

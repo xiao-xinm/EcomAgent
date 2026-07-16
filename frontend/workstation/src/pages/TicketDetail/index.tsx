@@ -65,6 +65,7 @@ import {
   PRIORITY_MAP,
   ROUTE_DECISION_MAP,
 } from "../../constants/workbench";
+import { useTicketEvents } from "../../hooks/useTicketEvents";
 
 const { Title, Text } = Typography;
 
@@ -280,6 +281,22 @@ const TicketDetailPage: React.FC = () => {
   useEffect(() => {
     loadDetail();
   }, [loadDetail]);
+
+  const refreshDetailFromTicketEvent = useCallback(async () => {
+    if (!ticketId) return;
+    try {
+      setDetail(await fetchTicketDetail(ticketId));
+    } catch {
+      // 实时提醒失败不覆盖当前详情，也不阻断坐席继续操作。
+    }
+  }, [ticketId]);
+
+  useTicketEvents({
+    ticketId,
+    onRefresh: () => {
+      void refreshDetailFromTicketEvent();
+    },
+  });
 
   useEffect(() => {
     let mounted = true;

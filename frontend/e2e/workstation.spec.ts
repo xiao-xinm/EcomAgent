@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 const traceId = 'trace_e2e_workstation'
 
@@ -10,6 +10,99 @@ function apiResponse<T>(data: T) {
     traceId,
     metadata: {},
     timestamp: new Date().toISOString(),
+  }
+}
+
+type TicketEventPayload = {
+  eventId: string
+  ticketId: string
+  status: string
+  assignedAgent: string | null
+  changedAt: string
+}
+
+async function enableFakeTicketSse(page: Page) {
+  await page.addInitScript(() => {
+    const instances: Array<{ target: EventTarget; closed: boolean }> = []
+
+    class FakeEventSource extends EventTarget {
+      readonly url: string
+      readonly withCredentials = false
+      readonly readyState = 1
+      onopen: ((event: Event) => void) | null = null
+      onmessage: ((event: MessageEvent) => void) | null = null
+      onerror: ((event: Event) => void) | null = null
+      private readonly instance: { target: EventTarget; closed: boolean }
+
+      constructor(url: string) {
+        super()
+        this.url = url
+        this.instance = { target: this, closed: false }
+        instances.push(this.instance)
+      }
+
+      close() {
+        this.instance.closed = true
+      }
+    }
+
+    const smartWindow = window as typeof window & {
+      __SMARTCS_WORKSTATION_CONFIG__?: Record<string, unknown>
+      __SMARTCS_EMIT_TICKET_EVENT__?: (payload: Record<string, unknown>) => void
+    }
+    Object.defineProperty(window, 'EventSource', {
+      configurable: true,
+      value: FakeEventSource,
+    })
+    smartWindow.__SMARTCS_WORKSTATION_CONFIG__ = {
+      ticketSseEnabled: true,
+      authRequired: false,
+      ticketSseDebounceMs: 20,
+    }
+    smartWindow.__SMARTCS_EMIT_TICKET_EVENT__ = (payload) => {
+      instances
+        .filter(instance => !instance.closed)
+        .forEach(instance => instance.target.dispatchEvent(new MessageEvent('ticket.changed', {
+          data: JSON.stringify(payload),
+        })))
+    }
+  })
+}
+
+async function emitTicketEvent(page: Page, payload: TicketEventPayload) {
+  await page.evaluate((eventPayload) => {
+    const smartWindow = window as typeof window & {
+      __SMARTCS_EMIT_TICKET_EVENT__?: (payload: Record<string, unknown>) => void
+    }
+    smartWindow.__SMARTCS_EMIT_TICKET_EVENT__?.(eventPayload)
+  }, payload)
+}
+
+function minimalTicketDetail(ticketId: string) {
+  return {
+    ticket: {
+      ticketId,
+      traceId,
+      sessionId: `s_${ticketId}`,
+      userId: 'u1001',
+      intent: 'human.takeover',
+      riskLevel: 'L3',
+      routeDecision: 'HUMAN_TAKEOVER',
+      status: 'PROCESSING',
+      priority: 'HIGH',
+      assignedAgent: 'agent001',
+      reason: '用户要求人工客服',
+      contextSnapshot: {},
+      resolution: {},
+      slaDeadline: null,
+      createdAt: '2026-07-16T08:00:00Z',
+      updatedAt: '2026-07-16T08:00:00Z',
+      resolvedAt: null,
+    },
+    approval: null,
+    takeover: null,
+    messages: [],
+    actions: [],
   }
 }
 
@@ -274,6 +367,94 @@ test('workstation renders ticket list and can claim a pending ticket', async ({ 
 
   await page.getByRole('button', { name: '领取' }).click()
   await expect.poll(() => claimCalled).toBe(true)
+})
+
+test('workstation ticket list refreshes after a ticket SSE event', async ({ page }) => {
+  await enableFakeTicketSse(page)
+  let listRequests = 0
+  let statsRequests = 0
+
+  await page.route('**/api/workbench/tickets/stats', async (route) => {
+    statsRequests += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        total: 1,
+        pending: 1,
+        processing: 0,
+        completed: 0,
+        overdueRisk: 0,
+      })),
+    })
+  })
+
+  await page.route('**/api/workbench/tickets?**', async (route) => {
+    listRequests += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        records: [],
+        total: 0,
+        pageNo: 1,
+        pageSize: 20,
+      })),
+    })
+  })
+
+  await page.goto('/tickets')
+  await expect(page.getByRole('main').getByText('工单列表')).toBeVisible()
+  const listBaseline = listRequests
+  const statsBaseline = statsRequests
+
+  await emitTicketEvent(page, {
+    eventId: 'evt_sse_list',
+    ticketId: 'wo_sse_list',
+    status: 'PENDING',
+    assignedAgent: null,
+    changedAt: '2026-07-16T08:01:00Z',
+  })
+
+  await expect.poll(() => listRequests).toBeGreaterThan(listBaseline)
+  await expect.poll(() => statsRequests).toBeGreaterThan(statsBaseline)
+})
+
+test('workstation ticket detail only refreshes for its own SSE events', async ({ page }) => {
+  await enableFakeTicketSse(page)
+  let detailRequests = 0
+
+  await page.route('**/api/workbench/tickets/wo_sse_detail', async (route) => {
+    detailRequests += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse(minimalTicketDetail('wo_sse_detail'))),
+    })
+  })
+
+  await page.goto('/tickets/wo_sse_detail')
+  await expect(page.getByText('工单详情')).toBeVisible()
+  const baseline = detailRequests
+
+  await emitTicketEvent(page, {
+    eventId: 'evt_sse_other',
+    ticketId: 'wo_sse_other',
+    status: 'PROCESSING',
+    assignedAgent: 'agent001',
+    changedAt: '2026-07-16T08:01:00Z',
+  })
+  await page.waitForTimeout(150)
+  expect(detailRequests).toBe(baseline)
+
+  await emitTicketEvent(page, {
+    eventId: 'evt_sse_detail',
+    ticketId: 'wo_sse_detail',
+    status: 'PROCESSING',
+    assignedAgent: 'agent001',
+    changedAt: '2026-07-16T08:02:00Z',
+  })
+  await expect.poll(() => detailRequests).toBeGreaterThan(baseline)
 })
 
 test('workstation ticket detail can add an internal note', async ({ page }) => {

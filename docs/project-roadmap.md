@@ -277,7 +277,7 @@
 
 ### Phase 7. 实时消息升级
 
-状态：已完成 SSE 最小技术尖刺，后续按需增强。
+状态：用户端消息 SSE 与坐席端工单 SSE 最小链路均已完成；WebSocket 双向能力按需后置。
 
 目标：
 
@@ -305,6 +305,11 @@
 - 已新增实时消息方案评估文档：`docs/realtime-messaging-evaluation.md`。
 - 当前结论是继续保留短轮询，后续如要提升实时体验，优先做用户端 SSE 试点，不立即实现 WebSocket。
 - 已完成 SSE 最小技术尖刺：Gateway 提供 `GET /api/chat/sessions/{sessionId}/events`，用户端 H5 可配置开启 SSE，失败后回退短轮询。
+- Workbench 已新增默认关闭的 `GET /api/workbench/tickets/events`，从共享 MySQL 的 `work_order` 与 `audit_log` 增量读取工单变化，不依赖 Redis、RocketMQ 或进程内广播。
+- 已新增 `infra/sql/15-workbench-ticket-sse-indexes.sql`，为工单更新时间和审计发生时间增量扫描提供可重复执行的索引迁移。
+- 坐席工作台列表收到 `ticket.changed` 后合并刷新列表与统计；详情页只响应当前 `ticketId`，并静默刷新详情、消息和操作日志。
+- 后端与前端开关均默认关闭；原生 `EventSource` 无法附加 Bearer Header，严格鉴权环境等待真实账号中心提供 Cookie/BFF 或长连接票据方案。
+- 2026-07-16 已完成真实 MySQL SSE 联调：连接收到 `stream.ready`，插入审计变化后收到对应 `ticket.changed`，测试数据和临时进程已清理。
 
 ### Phase 8. 登录鉴权与权限
 
@@ -399,7 +404,7 @@
 
 1. Phase 9：接入 Prometheus/Grafana 基础指标和告警；OpenTelemetry 链路追踪后置。
 2. Phase 8：拿到真实账号中心或统一登录契约后完成生产鉴权接入。
-3. Phase 7：按真实实时性需求，从用户端 SSE 扩展到坐席端提醒；多实例前继续保留短轮询兜底。
+3. Phase 7：保持用户端与坐席端 SSE 默认关闭并观察真实使用；只有需要双向人工聊天、在线状态、输入中或已读回执时再设计 WebSocket 协议。
 4. Phase 5：拿到真实知识内容源后，再做批量导入、文档切分、RAG 评测和内容审核。
 5. Phase 6：保持现有 MySQL outbox 方案运行；只有达到 MQ 评估触发条件后才重新讨论 RocketMQ。
 

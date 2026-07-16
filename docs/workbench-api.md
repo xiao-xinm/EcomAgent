@@ -372,6 +372,26 @@ interface ActionResult {
 }
 ```
 
+### TicketChangedEvent
+
+坐席端 SSE 只发送“工单发生变化”的轻量通知，页面收到通知后仍通过现有列表、统计或详情接口读取完整数据。
+
+```ts
+interface TicketChangedEvent {
+  eventId: string;
+  ticketId: string;
+  status: WorkOrderStatus;
+  assignedAgent?: string | null;
+  changedAt: string;
+}
+```
+
+事件事实来源：
+
+- `work_order.updated_at`：发现新工单和工单状态、分配坐席等变化。
+- `audit_log.occurred_at`：发现内部备注、人工消息等不一定修改工单状态的坐席动作。
+- 同一轮扫描中同一工单的多条变化会合并为一次通知；SSE 不承诺逐动作投递，完整事实仍以查询接口和数据库为准。
+
 ### InternalNoteRequest
 
 ```ts
@@ -847,6 +867,40 @@ interface NotificationOutboxSummary {
 - `oldestDueAt`：当前可领取事件中最早的到期时间；没有积压时为 `null`。
 
 Workbench outbox 默认关闭。关闭时接口返回 `enabled=false` 和零计数，但仍返回当前 Notification 开关与用户消息交付模式，不访问 outbox 表；开启后必须先完成 12、14 号 SQL 迁移。
+
+### 5.17 订阅工单变化事件
+
+```http
+GET /api/workbench/tickets/events
+Accept: text/event-stream
+```
+
+该接口默认关闭。Workbench 设置 `SMARTCS_WORKBENCH_TICKET_SSE_ENABLED=true` 后才会注册接口和后台增量扫描任务。
+
+事件类型：
+
+| event | data | 说明 |
+| --- | --- | --- |
+| `stream.ready` | `operatorId`、`connectedAt` | 连接已建立，前端应立即刷新一次当前页面数据 |
+| `ticket.changed` | `TicketChangedEvent` | 工单或其坐席动作发生变化 |
+| `heartbeat` | `timestamp` | 连接保活，不代表业务数据变化 |
+
+`ticket.changed` 示例：
+
+```text
+event: ticket.changed
+id: audit_evt_123
+data: {"eventId":"audit_evt_123","ticketId":"wo_123","status":"PROCESSING","assignedAgent":"agent_001","changedAt":"2026-07-16T08:00:00Z"}
+```
+
+行为边界：
+
+- 该接口使用与工单读取接口相同的坐席身份边界，只允许 `AGENT`、`SUPERVISOR` 或 `ADMIN`。
+- 该接口是增量提示通道，不替代 `GET /api/workbench/tickets`、统计和详情接口。
+- 前端收到事件后合并短时间内的重复通知，再调用原有查询接口。
+- SSE 断开时浏览器可自动重连；关闭 SSE 后，手动刷新和操作后刷新仍然可用。
+- 当前原生 `EventSource` 不能附加 `Authorization` Header；生产严格鉴权开启时，前端必须保持坐席 SSE 关闭，等待账号中心提供 Cookie/BFF 或其他长连接鉴权方案。
+- 事件通过共享 MySQL 增量扫描产生，因此当前多实例不需要 Redis Pub/Sub 或 RocketMQ；它是提醒通道，不提供消息队列级别的可靠投递保证。
 
 ## 6. 前端实现建议
 

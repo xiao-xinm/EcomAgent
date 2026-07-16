@@ -27,6 +27,7 @@ import {
   ROUTE_DECISION_MAP,
 } from "../../constants/workbench";
 import { canClaimTicket } from "../../utils/permissions";
+import { useTicketEvents } from "../../hooks/useTicketEvents";
 
 const statusOptions: { label: string; value: WorkOrderStatus }[] = [
   { label: "待处理", value: "PENDING" },
@@ -95,6 +96,13 @@ const TicketList: React.FC = () => {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  const refreshFromTicketEvent = useCallback(() => {
+    void loadStats();
+    actionRef.current?.reload();
+  }, [loadStats]);
+
+  useTicketEvents({ onRefresh: refreshFromTicketEvent });
 
   useEffect(() => {
     let mounted = true;

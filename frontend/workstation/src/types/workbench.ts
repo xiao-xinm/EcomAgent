@@ -97,6 +97,14 @@ export interface TicketStatsView {
   overdueRisk: number;
 }
 
+export interface TicketChangedEvent {
+  eventId: string;
+  ticketId: string;
+  status: WorkOrderStatus;
+  assignedAgent?: string | null;
+  changedAt: string;
+}
+
 export interface CurrentOperatorView {
   operatorId: string;
   principalType: "AGENT" | "SUPERVISOR" | "ADMIN" | string;

@@ -15,6 +15,9 @@
 - `10-notification-event-store.sql`：通知事件落库表结构。
 - `11-notification-delivery-status.sql`：通知投递状态、失败原因和重试时间字段。
 - `12-workbench-notification-outbox.sql`：Workbench 到 Notification 的事务 outbox 表结构。
+- `13-notification-delivery-lease.sql`：Notification 投递 worker 的数据库租约字段与索引。
+- `14-workbench-outbox-delivery-lease.sql`：Workbench outbox worker 的数据库租约字段与索引。
+- `15-workbench-ticket-sse-indexes.sql`：坐席工单 SSE 增量扫描使用的工单与审计时间索引。
 
 第一阶段已覆盖：
 

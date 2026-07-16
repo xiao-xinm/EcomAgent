@@ -65,6 +65,7 @@ mysql -u root -p smartcs_agent < 11-notification-delivery-status.sql
 mysql -u root -p smartcs_agent < 12-workbench-notification-outbox.sql
 mysql -u root -p smartcs_agent < 13-notification-delivery-lease.sql
 mysql -u root -p smartcs_agent < 14-workbench-outbox-delivery-lease.sql
+mysql -u root -p smartcs_agent < 15-workbench-ticket-sse-indexes.sql
 ```
 
 ## 4. 启动后端服务
@@ -128,6 +129,26 @@ Invoke-RestMethod `
 ```
 
 重点关注 `due`、`exhaustedFailed` 和 `oldestDueAt`。outbox 关闭时接口返回 `enabled=false` 和零计数。
+
+Workbench 工单 SSE 默认关闭。需要验证坐席列表和详情实时刷新时，先执行 `15-workbench-ticket-sse-indexes.sql`，再为 Workbench 设置：
+
+```text
+SMARTCS_WORKBENCH_TICKET_SSE_ENABLED=true
+SMARTCS_WORKBENCH_TICKET_SSE_POLL_INTERVAL_MS=2000
+SMARTCS_WORKBENCH_TICKET_SSE_BATCH_SIZE=100
+SMARTCS_WORKBENCH_TICKET_SSE_HEARTBEAT_INTERVAL_MS=15000
+SMARTCS_WORKBENCH_TICKET_SSE_EMITTER_TIMEOUT_MS=1800000
+```
+
+同时在 `frontend/workstation/.env` 设置并重启坐席前端：
+
+```text
+VITE_WORKSTATION_TICKET_SSE_ENABLED=true
+VITE_WORKSTATION_AUTH_REQUIRED=false
+VITE_WORKSTATION_TICKET_SSE_DEBOUNCE_MS=250
+```
+
+SSE 只负责提示变化，页面仍通过原有工单查询接口刷新完整数据。原生 `EventSource` 不能附加 Bearer Header；若 Workbench 开启 `SMARTCS_AUTH_STRICT_ENABLED=true`，必须把前端 SSE 开关保持为 `false`，待账号中心提供 Cookie/BFF 或长连接票据方案后再启用。
 
 仅验证 outbox 时，Workbench 仍直接写用户可见 `cs_message`。验证完整解耦迁移时，在上述配置基础上再设置：
 
