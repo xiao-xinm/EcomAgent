@@ -29,6 +29,40 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('workstation renders notification events', async ({ page }) => {
+  await page.route('**/api/workbench/notifications/outbox/summary', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        enabled: true,
+        pending: 4,
+        retryableFailed: 2,
+        exhaustedFailed: 1,
+        sent: 12,
+        due: 3,
+        leased: 1,
+        oldestDueAt: '2026-07-10T11:50:00Z',
+      })),
+    })
+  })
+
+  await page.route('**/api/notifications/events/delivery-summary', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json; charset=utf-8',
+      body: JSON.stringify(apiResponse({
+        enabled: true,
+        accepted: 2,
+        retryableFailed: 1,
+        exhaustedFailed: 0,
+        delivered: 9,
+        due: 1,
+        leased: 1,
+        oldestDueAt: '2026-07-10T11:55:00Z',
+      })),
+    })
+  })
+
   await page.route('**/api/notifications/events?**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -69,11 +103,17 @@ test('workstation renders notification events', async ({ page }) => {
   await page.goto('/notifications/events')
 
   await expect(page.getByText('通知事件').first()).toBeVisible()
+  await expect(page.getByText('通知运行状态')).toBeVisible()
+  await expect(page.getByText('Workbench Outbox')).toBeVisible()
+  await expect(page.getByText('Notification Delivery')).toBeVisible()
+  await expect(page.getByTestId('outbox-due')).toHaveText('3')
+  await expect(page.getByTestId('outbox-exhausted')).toHaveText('1')
+  await expect(page.getByTestId('delivery-completed')).toHaveText('9')
   await expect(page.getByText('ntf_e2e_failed')).toBeVisible()
   await expect(page.getByText('TAKEOVER_MESSAGE_SENT')).toBeVisible()
   await expect(page.getByText('投递失败')).toBeVisible()
   await expect(page.getByText('站内信通道暂不可用')).toBeVisible()
-  await expect(page.getByText('2', { exact: true })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '2', exact: true })).toBeVisible()
 })
 
 test('workstation renders ticket list and can claim a pending ticket', async ({ page }) => {

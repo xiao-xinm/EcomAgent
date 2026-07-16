@@ -1,14 +1,21 @@
-import React, { useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Tag, Typography, message } from "antd";
 import type { ActionType, ProColumns } from "@ant-design/pro-components";
 import { ProTable } from "@ant-design/pro-components";
 import dayjs from "dayjs";
-import { fetchNotificationEvents } from "../../services/notificationApi";
+import { fetchNotificationOutboxSummary } from "../../services/api";
+import {
+  fetchNotificationDeliverySummary,
+  fetchNotificationEvents,
+} from "../../services/notificationApi";
 import type {
+  NotificationDeliverySummary,
   NotificationEventQueryParams,
   NotificationEventStatus,
   NotificationEventView,
+  NotificationOutboxSummary,
 } from "../../types/notification";
+import OperationsSummaryBar from "./OperationsSummaryBar";
 
 const { Text } = Typography;
 
@@ -32,6 +39,37 @@ const formatTime = (value?: string | null) =>
 
 const NotificationEvents: React.FC = () => {
   const actionRef = useRef<ActionType>();
+  const [outboxSummary, setOutboxSummary] = useState<NotificationOutboxSummary>();
+  const [deliverySummary, setDeliverySummary] = useState<NotificationDeliverySummary>();
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryErrors, setSummaryErrors] = useState<string[]>([]);
+
+  const loadSummaries = useCallback(async () => {
+    setSummaryLoading(true);
+    const [outboxResult, deliveryResult] = await Promise.allSettled([
+      fetchNotificationOutboxSummary(),
+      fetchNotificationDeliverySummary(),
+    ]);
+    const errors: string[] = [];
+
+    if (outboxResult.status === "fulfilled") {
+      setOutboxSummary(outboxResult.value);
+    } else {
+      errors.push(`Workbench Outbox：${(outboxResult.reason as Error).message || "查询失败"}`);
+    }
+    if (deliveryResult.status === "fulfilled") {
+      setDeliverySummary(deliveryResult.value);
+    } else {
+      errors.push(`Notification Delivery：${(deliveryResult.reason as Error).message || "查询失败"}`);
+    }
+
+    setSummaryErrors(errors);
+    setSummaryLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadSummaries();
+  }, [loadSummaries]);
 
   const columns: ProColumns<NotificationEventView>[] = [
     {
@@ -125,6 +163,13 @@ const NotificationEvents: React.FC = () => {
 
   return (
     <div style={{ padding: 16 }}>
+      <OperationsSummaryBar
+        outbox={outboxSummary}
+        delivery={deliverySummary}
+        loading={summaryLoading}
+        errors={summaryErrors}
+        onRefresh={() => void loadSummaries()}
+      />
       <ProTable<NotificationEventView>
         headerTitle="通知事件"
         actionRef={actionRef}

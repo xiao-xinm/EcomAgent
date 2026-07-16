@@ -256,6 +256,9 @@
 - 2026-07-13 已使用真实 MySQL 验证摘要聚合口径，并确认标准 `CUSTOMER` 身份返回业务码 `1003`。
 - Notification 已新增 `GET /api/notifications/events/delivery-summary`，展示接收、可重试失败、重试耗尽、投递完成、当前到期、租约占用和最老积压时间；worker 关闭时不访问租约字段。
 - 2026-07-16 已使用真实 MySQL 验证 Notification 投递摘要聚合口径，专用样本和临时进程已清理。
+- 坐席工作台通知事件页已同时接入 Workbench Outbox 与 Notification Delivery 摘要，支持独立失败提示、手动刷新和积压状态突出显示。
+- Notification 已为 `/api/**` 增加工作台 CORS 白名单，默认允许本机 3001 端口，并支持 `SMARTCS_CORS_ALLOWED_ORIGINS` 覆盖。
+- 2026-07-16 已完成双摘要页面 E2E、真实服务预检和桌面视口视觉验收，记录见 `docs/e2e-validation-2026-07-16-workstation-notification-summary.md`。
 
 中间件要求：
 

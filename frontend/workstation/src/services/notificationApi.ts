@@ -11,6 +11,7 @@ import {
 } from "../auth/tokenProvider";
 import type { ApiResponse } from "../types/workbench";
 import type {
+  NotificationDeliverySummary,
   NotificationEventPageResult,
   NotificationEventQueryParams,
 } from "../types/notification";
@@ -153,4 +154,8 @@ export async function fetchNotificationEvents(
   params: NotificationEventQueryParams,
 ): Promise<NotificationEventPageResult> {
   return unwrap(notificationClient.get("/api/notifications/events", { params }));
+}
+
+export async function fetchNotificationDeliverySummary(): Promise<NotificationDeliverySummary> {
+  return unwrap(notificationClient.get("/api/notifications/events/delivery-summary"));
 }

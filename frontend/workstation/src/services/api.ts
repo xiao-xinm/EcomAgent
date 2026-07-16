@@ -25,6 +25,7 @@ import type {
   TicketQueryParams,
   ActionLogView,
 } from "../types/workbench";
+import type { NotificationOutboxSummary } from "../types/notification";
 
 const AUTH_ERROR_MESSAGES: Record<AuthFailureReason, string> = {
   expired: "登录已过期，请重新进入坐席工作台",
@@ -199,6 +200,10 @@ export async function fetchTickets(
 
 export async function fetchTicketStats(): Promise<TicketStatsView> {
   return unwrap(client.get("/api/workbench/tickets/stats"));
+}
+
+export async function fetchNotificationOutboxSummary(): Promise<NotificationOutboxSummary> {
+  return unwrap(client.get("/api/workbench/notifications/outbox/summary"));
 }
 
 export async function fetchTicketDetail(

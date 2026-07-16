@@ -39,3 +39,25 @@ export interface NotificationEventQueryParams {
 }
 
 export type NotificationEventPageResult = PageResult<NotificationEventView>;
+
+export interface NotificationOutboxSummary {
+  enabled: boolean;
+  pending: number;
+  retryableFailed: number;
+  exhaustedFailed: number;
+  sent: number;
+  due: number;
+  leased: number;
+  oldestDueAt?: string | null;
+}
+
+export interface NotificationDeliverySummary {
+  enabled: boolean;
+  accepted: number;
+  retryableFailed: number;
+  exhaustedFailed: number;
+  delivered: number;
+  due: number;
+  leased: number;
+  oldestDueAt?: string | null;
+}

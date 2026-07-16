@@ -20,11 +20,18 @@ FAQ 管理页通过 Knowledge 服务访问 `docs/knowledge-api.md` 中的 FAQ �
 
 ## 通知事件配置
 
-通知事件页通过 Notification 服务查询投递状态、重试次数和失败原因，只读展示，不会修改投递状态。
+通知事件页通过 Notification 服务查询投递状态、重试次数和失败原因，只读展示，不会修改投递状态。页面顶部同时展示：
+
+- Workbench Outbox 摘要：待处理、当前到期、失败待重试、重试耗尽、租约中、已发送和最老积压时间。
+- Notification Delivery 摘要：已接收、当前到期、失败待重试、重试耗尽、租约中、已投递和最老积压时间。
+
+两个摘要独立加载；其中一个服务暂时不可用时，另一个摘要和下方事件列表仍可继续使用。
 
 常用环境变量：
 
 - `VITE_WORKSTATION_NOTIFICATION_API_BASE_URL`：Notification 服务地址，默认 `http://localhost:8085`。
+
+本地跨域访问默认允许 `http://localhost:3001` 和 `http://127.0.0.1:3001`。部署到其他域名时，通过 Notification 服务的 `SMARTCS_CORS_ALLOWED_ORIGINS` 配置允许来源。
 
 ## 身份配置
 
