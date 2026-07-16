@@ -102,6 +102,28 @@ Copy-Item .\infra\env\backend-production.env.example .\infra\env\backend-product
 .\scripts\test-deployment-config.ps1
 ```
 
+## check-runtime-readiness.ps1
+
+`check-runtime-readiness.ps1` 在 Workbench、Knowledge 和 Notification 启动后只读检查运行进程实际加载的配置与依赖状态：
+
+- Knowledge `keyword` 模式要求 MySQL 可用；`hybrid` 模式还要求 Elasticsearch、pgvector 健康且三端文档数一致。
+- `NOTIFICATION` 用户消息模式要求 Workbench outbox、Notification 发布、retry worker 和 `USER_SESSION` 通道完整开启。
+- 任一侧出现重试耗尽时返回失败；仍可自动处理的待投递或重试积压会显示 `ASYNC_BACKLOG`，但不会误判为进程不可用。
+
+执行实时检查：
+
+```powershell
+.\scripts\check-runtime-readiness.ps1
+```
+
+脚本不会修改配置、索引、通知事件或数据库。它也支持 `-SnapshotPath` 读取脱敏 JSON 快照，便于离线复盘和脚本回归。
+
+运行 6 种状态组合的离线测试：
+
+```powershell
+.\scripts\test-runtime-readiness.ps1
+```
+
 ## smoke-knowledge-hybrid.ps1
 
 `smoke-knowledge-hybrid.ps1` 用于 Phase 5 混合检索验收。执行前必须：

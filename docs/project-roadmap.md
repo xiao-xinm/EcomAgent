@@ -382,6 +382,9 @@
 - 已将 `react-router-dom` 升级至 `6.30.4`、将锁定的 `form-data` 升级至 `4.0.6`，消除对应生产依赖审计告警；当前最新稳定版 `@ant-design/pro-components` 仍通过上游 `path-to-regexp` 保留审计风险，待上游发布兼容修复或单独评估替代方案。
 - 已新增 `infra/env/backend-production.env.example` 和 `scripts/check-deployment-config.ps1`，在部署前校验数据库、CORS、严格 JWT、服务拓扑、混合检索依赖和通知异步开关组合。
 - 已新增无第三方依赖的部署配置脚本回归测试，并在 `docs/production-deployment-config.md` 固化同步首发、异步灰度和回滚顺序。
+- 已新增 `scripts/check-runtime-readiness.ps1`，只读聚合 Knowledge 索引状态、Workbench Outbox 与 Notification Delivery 摘要，识别混合索引不一致、异步配置断链、重试耗尽和可恢复积压。
+- 已新增 6 种运行状态的离线快照回归测试；不依赖 Pester 或新增中间件。
+- 2026-07-16 已使用真实 Workbench、Knowledge、Notification 进程验证 `HYBRID_READY + DIRECT`，三端知识文档数均为 7；记录见 `docs/e2e-validation-2026-07-16-runtime-readiness.md`。
 
 中间件要求：
 

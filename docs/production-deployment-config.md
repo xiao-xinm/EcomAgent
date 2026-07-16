@@ -45,6 +45,17 @@ Copy-Item .\infra\env\backend-production.env.example .\infra\env\backend-product
 .\scripts\test-deployment-config.ps1
 ```
 
+应用进程全部启动后，再检查运行时实际状态：
+
+```powershell
+.\scripts\check-runtime-readiness.ps1 `
+  -WorkbenchBaseUrl https://workbench-api.example.com `
+  -KnowledgeBaseUrl https://knowledge-api.example.com `
+  -NotificationBaseUrl https://notification-api.example.com
+```
+
+配置文件校验只能发现静态组合错误；运行时检查还会验证 Knowledge 依赖可用性与索引一致性，以及通知链路是否存在配置断点或重试耗尽。脚本只读取摘要接口，不打印密钥，不创建业务数据。
+
 ## 3. 首次上线模式
 
 首次部署保持当前稳定的同步用户消息模式：

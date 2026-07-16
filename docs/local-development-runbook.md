@@ -229,6 +229,14 @@ cd D:\NewProject\EcomAgent
 .\scripts\check-local-stack.ps1 -SkipFrontend
 ```
 
+基础健康检查通过后，继续检查实际依赖和通知切换状态：
+
+```powershell
+.\scripts\check-runtime-readiness.ps1
+```
+
+该脚本只读调用 Knowledge 索引状态、Workbench Outbox 摘要和 Notification Delivery 摘要。正常开发态通常显示 `KEYWORD_READY` 或 `HYBRID_READY`，以及 `DIRECT`；异步用户消息模式应显示 `ASYNC_ACTIVE`。`HYBRID_INCONSISTENT`、`ASYNC_CONFIG_INVALID`、`RETRY_EXHAUSTED` 会返回退出码 `1`，应先处理后再联调。
+
 ## 7. 最小烟测
 
 ```powershell
