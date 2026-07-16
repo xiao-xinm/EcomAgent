@@ -9,24 +9,29 @@ public class NotificationDeliveryOperationsService {
 
     private final NotificationRetryRepository repository;
     private final boolean retryEnabled;
+    private final boolean userSessionChannelEnabled;
     private final int maxAttempts;
 
     public NotificationDeliveryOperationsService(
             NotificationRetryRepository repository,
             @Value("${smartcs.notification.retry.enabled:false}") boolean retryEnabled,
+            @Value("${smartcs.notification.channel.user-session.enabled:false}")
+            boolean userSessionChannelEnabled,
             @Value("${smartcs.notification.retry.max-attempts:5}") int maxAttempts) {
         if (maxAttempts <= 0) {
             throw new IllegalArgumentException("maxAttempts 必须大于 0");
         }
         this.repository = repository;
         this.retryEnabled = retryEnabled;
+        this.userSessionChannelEnabled = userSessionChannelEnabled;
         this.maxAttempts = maxAttempts;
     }
 
     public NotificationDeliverySummary getSummary() {
         if (!retryEnabled) {
-            return NotificationDeliverySummary.disabled();
+            return NotificationDeliverySummary.disabled(userSessionChannelEnabled);
         }
-        return repository.summarize(maxAttempts);
+        return repository.summarize(maxAttempts)
+                .withUserSessionChannel(userSessionChannelEnabled);
     }
 }

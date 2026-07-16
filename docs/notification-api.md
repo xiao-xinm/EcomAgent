@@ -143,6 +143,7 @@ GET /api/notifications/events/delivery-summary
 ```ts
 interface NotificationDeliverySummary {
   enabled: boolean;
+  userSessionChannelEnabled: boolean;
   accepted: number;
   retryableFailed: number;
   exhaustedFailed: number;
@@ -155,6 +156,8 @@ interface NotificationDeliverySummary {
 
 字段说明：
 
+- `enabled`：Notification retry worker 是否开启。
+- `userSessionChannelEnabled`：`USER_SESSION` 用户会话消息通道是否开启。
 - `accepted`：全部 `ACCEPTED` 事件，包括当前被 worker 租用的事件。
 - `retryableFailed`：重试次数尚未达到 `max-attempts` 的 `FAILED` 事件。
 - `exhaustedFailed`：重试次数已经达到 `max-attempts` 的 `FAILED` 事件。
@@ -163,7 +166,7 @@ interface NotificationDeliverySummary {
 - `leased`：当前被有效租约占用的开放事件。
 - `oldestDueAt`：当前可领取事件中最早的到期时间；没有积压时为 `null`。
 
-Notification retry worker 默认关闭。关闭时接口返回 `enabled=false` 和零计数，不访问 13 号迁移新增的租约字段；开启前必须完成 11、13 号 SQL 迁移。
+Notification retry worker 默认关闭。关闭时接口返回 `enabled=false` 和零计数，但仍返回 `USER_SESSION` 通道开关，不访问 13 号迁移新增的租约字段；开启前必须完成 11、13 号 SQL 迁移。
 
 ## 回写投递结果
 

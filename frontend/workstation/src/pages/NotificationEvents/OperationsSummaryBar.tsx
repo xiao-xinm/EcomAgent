@@ -8,6 +8,7 @@ import type {
 } from "../../types/notification";
 import {
   getDeliveryMetrics,
+  getCutoverState,
   getOutboxMetrics,
   getSummaryState,
   type SummaryMetric,
@@ -29,6 +30,10 @@ interface SummaryGroupProps {
   enabled: boolean;
   metrics: SummaryMetric[];
   oldestDueAt?: string | null;
+  runtimeTags?: Array<{
+    label: string;
+    color: "default" | "processing" | "success" | "error";
+  }>;
 }
 
 const toneColors: Record<SummaryMetric["tone"], string | undefined> = {
@@ -48,6 +53,7 @@ const SummaryGroup: React.FC<SummaryGroupProps> = ({
   enabled,
   metrics,
   oldestDueAt,
+  runtimeTags = [],
 }) => {
   const state = getSummaryState(enabled);
 
@@ -56,6 +62,11 @@ const SummaryGroup: React.FC<SummaryGroupProps> = ({
       <Flex align="center" gap={8} wrap="wrap" style={{ marginBottom: 8 }}>
         <Text strong>{title}</Text>
         <Tag color={state.color}>{state.label}</Tag>
+        {runtimeTags.map((runtimeTag) => (
+          <Tag key={runtimeTag.label} color={runtimeTag.color}>
+            {runtimeTag.label}
+          </Tag>
+        ))}
         <Text type="secondary">最老积压 {formatTime(oldestDueAt)}</Text>
       </Flex>
       <Flex gap={6} wrap="wrap">
@@ -78,8 +89,11 @@ const OperationsSummaryBar: React.FC<OperationsSummaryBarProps> = ({
   loading,
   errors,
   onRefresh,
-}) => (
-  <div
+}) => {
+  const cutoverState = getCutoverState(outbox, delivery);
+
+  return (
+    <div
     style={{
       marginBottom: 12,
       padding: "10px 12px",
@@ -88,9 +102,17 @@ const OperationsSummaryBar: React.FC<OperationsSummaryBarProps> = ({
       background: "#fff",
     }}
   >
-    <Flex align="center" justify="space-between" gap={12} style={{ marginBottom: errors.length ? 8 : 10 }}>
-      <Space size={8}>
+    <Flex align="center" justify="space-between" gap={12} wrap="wrap" style={{ marginBottom: errors.length ? 8 : 10 }}>
+      <Space size={8} wrap>
         <Text strong>通知运行状态</Text>
+        {cutoverState ? (
+          <>
+            <Tag color={cutoverState.color} data-testid="cutover-state">
+              {cutoverState.label}
+            </Tag>
+            <Text type="secondary">{cutoverState.description}</Text>
+          </>
+        ) : null}
         {loading ? <Spin size="small" /> : null}
       </Space>
       <Tooltip title="刷新运行状态">
@@ -128,6 +150,16 @@ const OperationsSummaryBar: React.FC<OperationsSummaryBarProps> = ({
           enabled={outbox.enabled}
           metrics={getOutboxMetrics(outbox)}
           oldestDueAt={outbox.oldestDueAt}
+          runtimeTags={[
+            {
+              label: outbox.notificationEnabled ? "Notification 已开启" : "Notification 已关闭",
+              color: outbox.notificationEnabled ? "success" : "error",
+            },
+            {
+              label: outbox.userMessageDeliveryMode === "NOTIFICATION" ? "消息异步" : "消息直写",
+              color: outbox.userMessageDeliveryMode === "NOTIFICATION" ? "processing" : "default",
+            },
+          ]}
         />
       ) : null}
       {delivery ? (
@@ -137,10 +169,17 @@ const OperationsSummaryBar: React.FC<OperationsSummaryBarProps> = ({
           enabled={delivery.enabled}
           metrics={getDeliveryMetrics(delivery)}
           oldestDueAt={delivery.oldestDueAt}
+          runtimeTags={[
+            {
+              label: delivery.userSessionChannelEnabled ? "USER_SESSION 已开启" : "USER_SESSION 已关闭",
+              color: delivery.userSessionChannelEnabled ? "success" : "error",
+            },
+          ]}
         />
       ) : null}
     </div>
-  </div>
-);
+    </div>
+  );
+};
 
 export default OperationsSummaryBar;

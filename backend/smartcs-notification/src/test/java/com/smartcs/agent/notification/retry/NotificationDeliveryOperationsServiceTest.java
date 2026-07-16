@@ -16,11 +16,12 @@ class NotificationDeliveryOperationsServiceTest {
     void disabledRetryReturnsZeroSummaryWithoutDatabaseAccess() {
         NotificationRetryRepository repository = mock(NotificationRetryRepository.class);
         NotificationDeliveryOperationsService service =
-                new NotificationDeliveryOperationsService(repository, false, 5);
+                new NotificationDeliveryOperationsService(repository, false, false, 5);
 
         NotificationDeliverySummary summary = service.getSummary();
 
         assertThat(summary.enabled()).isFalse();
+        assertThat(summary.userSessionChannelEnabled()).isFalse();
         assertThat(summary.accepted()).isZero();
         assertThat(summary.oldestDueAt()).isNull();
         verifyNoInteractions(repository);
@@ -33,18 +34,19 @@ class NotificationDeliveryOperationsServiceTest {
                 true, 3, 2, 1, 12, 4, 1, Instant.parse("2026-07-13T08:00:00Z"));
         when(repository.summarize(5)).thenReturn(expected);
         NotificationDeliveryOperationsService service =
-                new NotificationDeliveryOperationsService(repository, true, 5);
+                new NotificationDeliveryOperationsService(repository, true, true, 5);
 
         NotificationDeliverySummary summary = service.getSummary();
 
-        assertThat(summary).isSameAs(expected);
+        assertThat(summary.accepted()).isEqualTo(expected.accepted());
+        assertThat(summary.userSessionChannelEnabled()).isTrue();
         verify(repository).summarize(5);
     }
 
     @Test
     void invalidMaxAttemptsFailsFast() {
         assertThatThrownBy(() -> new NotificationDeliveryOperationsService(
-                        mock(NotificationRetryRepository.class), true, 0))
+                        mock(NotificationRetryRepository.class), true, true, 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("maxAttempts");
     }

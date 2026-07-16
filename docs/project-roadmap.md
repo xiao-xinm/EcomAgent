@@ -259,6 +259,9 @@
 - 坐席工作台通知事件页已同时接入 Workbench Outbox 与 Notification Delivery 摘要，支持独立失败提示、手动刷新和积压状态突出显示。
 - Notification 已为 `/api/**` 增加工作台 CORS 白名单，默认允许本机 3001 端口，并支持 `SMARTCS_CORS_ALLOWED_ORIGINS` 覆盖。
 - 2026-07-16 已完成双摘要页面 E2E、真实服务预检和桌面视口视觉验收，记录见 `docs/e2e-validation-2026-07-16-workstation-notification-summary.md`。
+- Workbench Outbox 摘要已增加 Notification 开关和当前用户消息交付模式；Notification Delivery 摘要已增加 `USER_SESSION` 通道开关。
+- 坐席工作台已基于两端配置和积压状态展示同步直写、切换就绪、积压阻断、异步运行和配置异常，不会自动修改运行开关。
+- 2026-07-16 已完成默认同步模式真实 API 与页面验收，记录见 `docs/e2e-validation-2026-07-16-notification-cutover-readiness.md`。
 
 中间件要求：
 

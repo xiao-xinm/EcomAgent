@@ -11,10 +11,36 @@ public record NotificationDeliverySummary(
         long delivered,
         long due,
         long leased,
-        Instant oldestDueAt
+        Instant oldestDueAt,
+        boolean userSessionChannelEnabled
 ) {
 
-    public static NotificationDeliverySummary disabled() {
-        return new NotificationDeliverySummary(false, 0, 0, 0, 0, 0, 0, null);
+    public NotificationDeliverySummary(
+            boolean enabled,
+            long accepted,
+            long retryableFailed,
+            long exhaustedFailed,
+            long delivered,
+            long due,
+            long leased,
+            Instant oldestDueAt) {
+        this(enabled, accepted, retryableFailed, exhaustedFailed, delivered, due, leased, oldestDueAt, false);
+    }
+
+    public static NotificationDeliverySummary disabled(boolean userSessionChannelEnabled) {
+        return new NotificationDeliverySummary(false, 0, 0, 0, 0, 0, 0, null, userSessionChannelEnabled);
+    }
+
+    public NotificationDeliverySummary withUserSessionChannel(boolean enabled) {
+        return new NotificationDeliverySummary(
+                this.enabled,
+                accepted,
+                retryableFailed,
+                exhaustedFailed,
+                delivered,
+                due,
+                leased,
+                oldestDueAt,
+                enabled);
     }
 }

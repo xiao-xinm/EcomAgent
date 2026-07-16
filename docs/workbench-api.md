@@ -822,6 +822,8 @@ GET /api/workbench/notifications/outbox/summary
 ```ts
 interface NotificationOutboxSummary {
   enabled: boolean;
+  notificationEnabled: boolean;
+  userMessageDeliveryMode: "DIRECT" | "NOTIFICATION";
   pending: number;
   retryableFailed: number;
   exhaustedFailed: number;
@@ -834,6 +836,9 @@ interface NotificationOutboxSummary {
 
 字段说明：
 
+- `enabled`：Workbench outbox worker 是否开启。
+- `notificationEnabled`：Workbench 是否允许向 Notification 发布事件。
+- `userMessageDeliveryMode`：`DIRECT` 表示 Workbench 事务内直写用户消息；`NOTIFICATION` 表示由 Notification 异步写入。
 - `pending`：全部 `PENDING` 事件，包括当前被其他 worker 租用的事件。
 - `retryableFailed`：失败次数尚未达到 `max-attempts` 的 `FAILED` 事件。
 - `exhaustedFailed`：失败次数已经达到 `max-attempts` 的 `FAILED` 事件。
@@ -841,7 +846,7 @@ interface NotificationOutboxSummary {
 - `leased`：当前被有效租约占用的开放事件。
 - `oldestDueAt`：当前可领取事件中最早的到期时间；没有积压时为 `null`。
 
-Workbench outbox 默认关闭。关闭时接口返回 `enabled=false` 和零计数，不访问 outbox 表；开启后必须先完成 12、14 号 SQL 迁移。
+Workbench outbox 默认关闭。关闭时接口返回 `enabled=false` 和零计数，但仍返回当前 Notification 开关与用户消息交付模式，不访问 outbox 表；开启后必须先完成 12、14 号 SQL 迁移。
 
 ## 6. 前端实现建议
 

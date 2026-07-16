@@ -27,6 +27,8 @@ FAQ 管理页通过 Knowledge 服务访问 `docs/knowledge-api.md` 中的 FAQ �
 
 两个摘要独立加载；其中一个服务暂时不可用时，另一个摘要和下方事件列表仍可继续使用。
 
+页面会结合消息直写、outbox、Notification、retry worker 和 `USER_SESSION` 通道状态展示切换结论：同步直写中、可切换异步、灰度/异步存在积压、异步交付中或异步配置异常。该结论只读，不会自动修改后端开关。
+
 常用环境变量：
 
 - `VITE_WORKSTATION_NOTIFICATION_API_BASE_URL`：Notification 服务地址，默认 `http://localhost:8085`。

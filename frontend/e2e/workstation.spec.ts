@@ -35,6 +35,8 @@ test('workstation renders notification events', async ({ page }) => {
       contentType: 'application/json; charset=utf-8',
       body: JSON.stringify(apiResponse({
         enabled: true,
+        notificationEnabled: true,
+        userMessageDeliveryMode: 'DIRECT',
         pending: 4,
         retryableFailed: 2,
         exhaustedFailed: 1,
@@ -52,6 +54,7 @@ test('workstation renders notification events', async ({ page }) => {
       contentType: 'application/json; charset=utf-8',
       body: JSON.stringify(apiResponse({
         enabled: true,
+        userSessionChannelEnabled: true,
         accepted: 2,
         retryableFailed: 1,
         exhaustedFailed: 0,
@@ -106,6 +109,9 @@ test('workstation renders notification events', async ({ page }) => {
   await expect(page.getByText('通知运行状态')).toBeVisible()
   await expect(page.getByText('Workbench Outbox')).toBeVisible()
   await expect(page.getByText('Notification Delivery')).toBeVisible()
+  await expect(page.getByTestId('cutover-state')).toHaveText('存在重试耗尽')
+  await expect(page.getByText('Notification 已开启')).toBeVisible()
+  await expect(page.getByText('USER_SESSION 已开启')).toBeVisible()
   await expect(page.getByTestId('outbox-due')).toHaveText('3')
   await expect(page.getByTestId('outbox-exhausted')).toHaveText('1')
   await expect(page.getByTestId('delivery-completed')).toHaveText('9')

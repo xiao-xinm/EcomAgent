@@ -42,6 +42,8 @@ export type NotificationEventPageResult = PageResult<NotificationEventView>;
 
 export interface NotificationOutboxSummary {
   enabled: boolean;
+  notificationEnabled: boolean;
+  userMessageDeliveryMode: "DIRECT" | "NOTIFICATION";
   pending: number;
   retryableFailed: number;
   exhaustedFailed: number;
@@ -53,6 +55,7 @@ export interface NotificationOutboxSummary {
 
 export interface NotificationDeliverySummary {
   enabled: boolean;
+  userSessionChannelEnabled: boolean;
   accepted: number;
   retryableFailed: number;
   exhaustedFailed: number;
