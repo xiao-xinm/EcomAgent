@@ -254,6 +254,8 @@
 - 默认仍走同步 HTTP 辅助链路并由 Workbench 事务写 `cs_message`。迁移模式已经具备并通过验收，但在生产部署和持续观测方案完成前不切换默认值。
 - Workbench 已新增受坐席身份保护的 `GET /api/workbench/notifications/outbox/summary`，展示待投递、可重试失败、重试耗尽、当前到期、租约占用和最老积压时间；outbox 关闭时不访问数据库。
 - 2026-07-13 已使用真实 MySQL 验证摘要聚合口径，并确认标准 `CUSTOMER` 身份返回业务码 `1003`。
+- Notification 已新增 `GET /api/notifications/events/delivery-summary`，展示接收、可重试失败、重试耗尽、投递完成、当前到期、租约占用和最老积压时间；worker 关闭时不访问租约字段。
+- 2026-07-16 已使用真实 MySQL 验证 Notification 投递摘要聚合口径，专用样本和临时进程已清理。
 
 中间件要求：
 

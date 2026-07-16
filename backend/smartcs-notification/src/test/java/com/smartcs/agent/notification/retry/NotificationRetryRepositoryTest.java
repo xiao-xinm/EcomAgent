@@ -76,4 +76,37 @@ class NotificationRetryRepositoryTest {
         verify(jdbcTemplate).update(contains("retry_count = retry_count + 1"), any(Object[].class));
         verify(jdbcTemplate, times(2)).update(contains("delivery_owner = ?"), any(Object[].class));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void summarizeMapsDeliveryCountsAndOldestDueTime() throws Exception {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        ResultSet resultSet = mock(ResultSet.class);
+        Instant oldestDueAt = Instant.parse("2026-07-13T08:00:00Z");
+        when(resultSet.getLong("accepted_count")).thenReturn(3L);
+        when(resultSet.getLong("retryable_failed_count")).thenReturn(2L);
+        when(resultSet.getLong("exhausted_failed_count")).thenReturn(1L);
+        when(resultSet.getLong("delivered_count")).thenReturn(12L);
+        when(resultSet.getLong("due_count")).thenReturn(4L);
+        when(resultSet.getLong("leased_count")).thenReturn(1L);
+        when(resultSet.getTimestamp("oldest_due_at")).thenReturn(Timestamp.from(oldestDueAt));
+        when(jdbcTemplate.queryForObject(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(invocation -> {
+                    RowMapper<NotificationDeliverySummary> rowMapper = invocation.getArgument(1);
+                    return rowMapper.mapRow(resultSet, 0);
+                });
+        NotificationRetryRepository repository =
+                new NotificationRetryRepository(jdbcTemplate, new ObjectMapper());
+
+        NotificationDeliverySummary summary = repository.summarize(5);
+
+        assertThat(summary.enabled()).isTrue();
+        assertThat(summary.accepted()).isEqualTo(3);
+        assertThat(summary.retryableFailed()).isEqualTo(2);
+        assertThat(summary.exhaustedFailed()).isEqualTo(1);
+        assertThat(summary.delivered()).isEqualTo(12);
+        assertThat(summary.due()).isEqualTo(4);
+        assertThat(summary.leased()).isEqualTo(1);
+        assertThat(summary.oldestDueAt()).isEqualTo(oldestDueAt);
+    }
 }

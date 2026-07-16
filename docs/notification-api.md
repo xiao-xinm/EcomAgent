@@ -132,6 +132,39 @@ GET /api/notifications/events?pageNo=1&pageSize=20&eventType=APPROVAL_APPROVED&t
 }
 ```
 
+## 查询投递运行摘要
+
+```http
+GET /api/notifications/events/delivery-summary
+```
+
+响应：
+
+```ts
+interface NotificationDeliverySummary {
+  enabled: boolean;
+  accepted: number;
+  retryableFailed: number;
+  exhaustedFailed: number;
+  delivered: number;
+  due: number;
+  leased: number;
+  oldestDueAt?: string;
+}
+```
+
+字段说明：
+
+- `accepted`：全部 `ACCEPTED` 事件，包括当前被 worker 租用的事件。
+- `retryableFailed`：重试次数尚未达到 `max-attempts` 的 `FAILED` 事件。
+- `exhaustedFailed`：重试次数已经达到 `max-attempts` 的 `FAILED` 事件。
+- `delivered`：已完成真实通道投递的事件。
+- `due`：当前已到期、未被有效租约占用且可立即领取的事件。
+- `leased`：当前被有效租约占用的开放事件。
+- `oldestDueAt`：当前可领取事件中最早的到期时间；没有积压时为 `null`。
+
+Notification retry worker 默认关闭。关闭时接口返回 `enabled=false` 和零计数，不访问 13 号迁移新增的租约字段；开启前必须完成 11、13 号 SQL 迁移。
+
 ## 回写投递结果
 
 当前阶段还没有真实短信、站内信或 MQ 消费器。该接口先作为投递状态骨架，用于后续投递 worker 或消息消费者回写结果。

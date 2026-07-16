@@ -101,6 +101,14 @@ SMARTCS_NOTIFICATION_RETRY_LEASE_DURATION_MS=120000
 启用 Notification worker 前必须执行 13 号迁移。多实例部署时每个进程可以设置不同的
 `SMARTCS_NOTIFICATION_RETRY_WORKER_ID`；留空会自动生成。租约应长于单次通道调用的最大耗时。
 
+启用后可查看 Notification 投递运行摘要：
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:8085/api/notifications/events/delivery-summary
+```
+
+重点关注 `due`、`exhaustedFailed` 和 `oldestDueAt`。worker 关闭时接口返回 `enabled=false` 和零计数。
+
 Workbench 通知 outbox 也默认关闭，关闭时保持原有同步 HTTP 辅助链路。需要验证事务 outbox 时，依次执行 `12-workbench-notification-outbox.sql` 和 `14-workbench-outbox-delivery-lease.sql`，同时启动 Workbench 与 Notification，再设置：
 
 ```text

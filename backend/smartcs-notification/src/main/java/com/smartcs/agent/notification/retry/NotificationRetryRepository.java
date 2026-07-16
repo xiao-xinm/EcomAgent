@@ -122,6 +122,55 @@ public class NotificationRetryRepository {
                 workerId);
     }
 
+    public NotificationDeliverySummary summarize(int maxAttempts) {
+        if (maxAttempts <= 0) {
+            throw new IllegalArgumentException("maxAttempts 必须大于 0");
+        }
+        return jdbcTemplate.queryForObject(
+                """
+                SELECT
+                    COALESCE(SUM(status = 'ACCEPTED'), 0) AS accepted_count,
+                    COALESCE(SUM(status = 'FAILED' AND retry_count < ?), 0) AS retryable_failed_count,
+                    COALESCE(SUM(status = 'FAILED' AND retry_count >= ?), 0) AS exhausted_failed_count,
+                    COALESCE(SUM(status = 'DELIVERED'), 0) AS delivered_count,
+                    COALESCE(SUM(
+                        retry_count < ?
+                        AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
+                        AND (
+                            status = 'ACCEPTED'
+                            OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= NOW(3)))
+                        )
+                    ), 0) AS due_count,
+                    COALESCE(SUM(
+                        status IN ('ACCEPTED', 'FAILED')
+                        AND delivery_lease_until > NOW(3)
+                    ), 0) AS leased_count,
+                    MIN(CASE
+                        WHEN retry_count < ?
+                         AND (delivery_lease_until IS NULL OR delivery_lease_until <= NOW(3))
+                         AND (
+                            status = 'ACCEPTED'
+                            OR (status = 'FAILED' AND (next_retry_at IS NULL OR next_retry_at <= NOW(3)))
+                         )
+                        THEN COALESCE(next_retry_at, accepted_at)
+                    END) AS oldest_due_at
+                FROM notification_event
+                """,
+                (rs, rowNum) -> new NotificationDeliverySummary(
+                        true,
+                        rs.getLong("accepted_count"),
+                        rs.getLong("retryable_failed_count"),
+                        rs.getLong("exhausted_failed_count"),
+                        rs.getLong("delivered_count"),
+                        rs.getLong("due_count"),
+                        rs.getLong("leased_count"),
+                        toInstant(rs.getTimestamp("oldest_due_at"))),
+                maxAttempts,
+                maxAttempts,
+                maxAttempts,
+                maxAttempts);
+    }
+
     private void validateClaimArguments(
             String workerId,
             int batchSize,
